@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "CloudKitchen - Full-stack cloud kitchen food ordering platform",
   "scripts": {
-    "install:all": "npm install --prefix server && npm install --prefix client",
+    "install:all": "npm install --include=dev --prefix server && npm install --include=dev --prefix client",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
