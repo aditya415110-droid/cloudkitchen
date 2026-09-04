@@ -1,0 +1,272 @@
+import Order from '../models/Order.js';
+import MenuItem from '../models/MenuItem.js';
+import { generateOrderId, generateQrToken } from '../utils/generateOrderId.js';
+import { qrService } from '../services/qrService.js';
+import { emailService } from '../services/emailService.js';
+
+export const orderController = {
+  // Customer: place order
+  async create(req, res) {
+    try {
+      const { items } = req.body; // [{menuItemId, quantity}]
+
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
+      }
+
+      // Validate & get current prices from DB
+      const menuItemIds = items.map(i => i.menuItemId);
+      const menuItems = await MenuItem.find({ _id: { $in: menuItemIds }, isAvailable: true, isDeleted: false });
+
+      if (menuItems.length !== menuItemIds.length) {
+        return res.status(400).json({ success: false, message: 'Some items are unavailable or do not exist.' });
+      }
+
+      const menuMap = new Map(menuItems.map(m => [m._id.toString(), m]));
+
+      // Build order items with server-side prices
+      const orderItems = items.map(item => {
+        const menuItem = menuMap.get(item.menuItemId);
+        return {
+          menuItemId: menuItem._id,
+          name: menuItem.name,        // snapshot
+          price: menuItem.price,      // snapshot from DB, NOT from client
+          quantity: Math.max(1, Math.floor(item.quantity)),
+        };
+      });
+
+      const totalAmount = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+      const order = await Order.create({
+        orderId: generateOrderId(),
+        customerId: req.user._id,
+        customerEmail: req.user.email,
+        customerName: req.user.name,
+        items: orderItems,
+        totalAmount,
+        qrToken: generateQrToken(),
+        estimatedPickupTime: new Date(Date.now() + 30 * 60 * 1000), // default 30 min
+      });
+
+      // Generate QR data URL for response
+      const qrDataUrl = await qrService.generateQrDataUrl(order.qrToken);
+
+      // Send confirmation email (non-blocking)
+      emailService.sendOrderConfirmation(order).then(sent => {
+        if (sent) {
+          Order.updateOne({ _id: order._id }, { 'emailsSent.confirmation': true }).exec();
+        }
+      });
+
+      // Emit to admin room
+      const io = req.app.get('io');
+      if (io) io.to('admin').emit('newOrder', { orderId: order.orderId });
+
+      res.status(201).json({
+        success: true,
+        data: { ...order.toObject(), qrDataUrl },
+      });
+    } catch (error) {
+      console.error('Create order error:', error);
+      res.status(500).json({ success: false, message: 'Failed to create order.' });
+    }
+  },
+
+  // Customer: get own orders
+  async getMyOrders(req, res) {
+    const orders = await Order.find({ customerId: req.user._id })
+      .sort({ createdAt: -1 })
+      .select('-qrToken');
+    res.json({ success: true, data: orders });
+  },
+
+  // Customer: get single order
+  async getById(req, res) {
+    const order = await Order.findOne({ _id: req.params.id, customerId: req.user._id });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    const qrDataUrl = await qrService.generateQrDataUrl(order.qrToken);
+    res.json({ success: true, data: { ...order.toObject(), qrDataUrl } });
+  },
+
+  // Admin: get all orders
+  async adminGetAll(req, res) {
+    const { status, search } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (search) {
+      filter.$or = [
+        { orderId: { $regex: search, $options: 'i' } },
+        { customerName: { $regex: search, $options: 'i' } },
+        { customerEmail: { $regex: search, $options: 'i' } },
+      ];
+    }
+    const orders = await Order.find(filter).sort({ createdAt: -1 });
+    res.json({ success: true, data: orders });
+  },
+
+  // Admin: get single order
+  async adminGetById(req, res) {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+    res.json({ success: true, data: order });
+  },
+
+  // Admin: update order status
+  async updateStatus(req, res) {
+    const { status } = req.body;
+    const validStatuses = Order.ORDER_STATUSES;
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status.' });
+    }
+
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    if (order.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Cannot modify a cancelled order.' });
+    }
+    if (order.status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Cannot modify a completed order.' });
+    }
+
+    order.status = status;
+
+    // Send ready notification (only once)
+    if (status === 'READY_FOR_PICKUP' && !order.emailsSent.ready) {
+      emailService.sendOrderReadyNotification(order).then(sent => {
+        if (sent) {
+          Order.updateOne({ _id: order._id }, { 'emailsSent.ready': true }).exec();
+        }
+      });
+    }
+
+    if (status === 'COMPLETED') {
+      order.completedAt = new Date();
+      order.qrUsed = true;
+    }
+
+    await order.save();
+
+    // Real-time update to customer
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order:${order._id}`).emit('orderUpdate', {
+        orderId: order.orderId,
+        status: order.status,
+        estimatedPickupTime: order.estimatedPickupTime,
+      });
+      io.to('admin').emit('orderStatusChanged', { orderId: order.orderId, status });
+    }
+
+    res.json({ success: true, data: order });
+  },
+
+  // Admin: update estimated pickup time
+  async updateEstimatedTime(req, res) {
+    const { estimatedPickupTime } = req.body;
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    if (['CANCELLED', 'COMPLETED'].includes(order.status)) {
+      return res.status(400).json({ success: false, message: 'Cannot modify this order.' });
+    }
+
+    order.estimatedPickupTime = new Date(estimatedPickupTime);
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order:${order._id}`).emit('orderUpdate', {
+        orderId: order.orderId,
+        status: order.status,
+        estimatedPickupTime: order.estimatedPickupTime,
+      });
+    }
+
+    res.json({ success: true, data: order });
+  },
+
+  // Admin: cancel order
+  async cancel(req, res) {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    if (order.status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Cannot cancel a completed order.' });
+    }
+    if (order.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Order is already cancelled.' });
+    }
+
+    order.status = 'CANCELLED';
+    order.cancelledAt = new Date();
+    order.cancelledBy = req.user.email;
+    order.qrUsed = true; // invalidate QR
+
+    if (!order.emailsSent.cancellation) {
+      emailService.sendOrderCancellationNotification(order).then(sent => {
+        if (sent) {
+          Order.updateOne({ _id: order._id }, { 'emailsSent.cancellation': true }).exec();
+        }
+      });
+    }
+
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order:${order._id}`).emit('orderUpdate', {
+        orderId: order.orderId,
+        status: 'CANCELLED',
+      });
+      io.to('admin').emit('orderStatusChanged', { orderId: order.orderId, status: 'CANCELLED' });
+    }
+
+    res.json({ success: true, data: order });
+  },
+
+  // Admin: complete order (pickup)
+  async complete(req, res) {
+    const order = await Order.findById(req.params.id);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found.' });
+
+    if (order.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'Cannot complete a cancelled order.' });
+    }
+    if (order.status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'Order already completed.' });
+    }
+
+    order.status = 'COMPLETED';
+    order.completedAt = new Date();
+    order.qrUsed = true;
+    await order.save();
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order:${order._id}`).emit('orderUpdate', { orderId: order.orderId, status: 'COMPLETED' });
+      io.to('admin').emit('orderStatusChanged', { orderId: order.orderId, status: 'COMPLETED' });
+    }
+
+    res.json({ success: true, data: order });
+  },
+
+  // Admin: verify QR code
+  async verifyQr(req, res) {
+    const { qrToken } = req.body;
+    if (!qrToken) return res.status(400).json({ success: false, message: 'QR token is required.' });
+
+    const order = await Order.findOne({ qrToken });
+    if (!order) return res.status(404).json({ success: false, message: 'Invalid QR code.' });
+
+    if (order.status === 'CANCELLED') {
+      return res.status(400).json({ success: false, message: 'This order has been cancelled.', data: order });
+    }
+    if (order.qrUsed || order.status === 'COMPLETED') {
+      return res.status(400).json({ success: false, message: 'This QR code has already been used.', data: order });
+    }
+
+    res.json({ success: true, data: order });
+  },
+};
