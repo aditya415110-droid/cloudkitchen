@@ -3,13 +3,24 @@ import { api } from '../../services/api';
 import { useCart } from '../../context/CartContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
-import { FiPlus, FiCheck } from 'react-icons/fi';
+import { FiPlus, FiCheck, FiSearch } from 'react-icons/fi';
+import StarRating from '../../components/common/StarRating';
+import MenuItemModal from '../../components/customer/MenuItemModal';
 
 export default function Menu() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('default');
+  const [activeItem, setActiveItem] = useState(null);
   const { addItem, items: cartItems } = useCart();
+
+  // Keep the grid in sync when a review is left inside the detail modal.
+  const handleRatingChange = (itemId, averageRating, reviewCount) => {
+    setItems(prev => prev.map(i => i._id === itemId ? { ...i, averageRating, reviewCount } : i));
+    setActiveItem(prev => prev && prev._id === itemId ? { ...prev, averageRating, reviewCount } : prev);
+  };
 
   useEffect(() => {
     api.getMenu()
@@ -19,7 +30,20 @@ export default function Menu() {
   }, []);
 
   const categories = ['All', ...new Set(items.map(i => i.category))];
-  const filtered = selectedCategory === 'All' ? items : items.filter(i => i.category === selectedCategory);
+
+  const query = search.trim().toLowerCase();
+  const filtered = items
+    .filter(i => selectedCategory === 'All' || i.category === selectedCategory)
+    .filter(i => !query
+      || i.name.toLowerCase().includes(query)
+      || i.description?.toLowerCase().includes(query)
+      || i.category.toLowerCase().includes(query))
+    .sort((a, b) => {
+      if (sortBy === 'rating') return (b.averageRating || 0) - (a.averageRating || 0);
+      if (sortBy === 'price-asc') return a.price - b.price;
+      if (sortBy === 'price-desc') return b.price - a.price;
+      return 0;
+    });
 
   const isInCart = (id) => cartItems.some(i => i.menuItemId === id);
 
@@ -28,6 +52,25 @@ export default function Menu() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">Our Menu</h1>
+
+      {/* Search and sort */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-4">
+        <div className="relative flex-1">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+          <input
+            className="input pl-9"
+            placeholder="Search dishes..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <select className="input sm:w-52" value={sortBy} onChange={e => setSortBy(e.target.value)}>
+          <option value="default">Sort: Featured</option>
+          <option value="rating">Top rated</option>
+          <option value="price-asc">Price: low to high</option>
+          <option value="price-desc">Price: high to low</option>
+        </select>
+      </div>
 
       {/* Category filter */}
       <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
@@ -53,22 +96,34 @@ export default function Menu() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {filtered.map(item => (
-            <div key={item._id} className="card group">
+            <div key={item._id} className="card group flex flex-col">
               {/* Image carousel */}
-              <div className="aspect-[4/3] bg-gray-100 overflow-hidden">
+              <div className="aspect-[4/3] bg-gray-100 overflow-hidden relative">
                 {item.images?.length > 0 ? (
                   <ImageCarousel images={item.images} />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-400 text-4xl">🍽️</div>
                 )}
+                {item.reviewCount > 0 && (
+                  <span className="absolute top-2 left-2 bg-white/95 rounded-full px-2 py-1 shadow-sm">
+                    <StarRating value={item.averageRating} size="sm" showValue count={item.reviewCount} />
+                  </span>
+                )}
               </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between mb-1">
+              <div className="p-4 flex flex-col flex-1">
+                <div className="flex items-start justify-between mb-1 gap-2">
                   <h3 className="font-bold text-lg">{item.name}</h3>
-                  <span className="font-bold text-brand-600 text-lg">₹{item.price}</span>
+                  <span className="font-bold text-brand-600 text-lg whitespace-nowrap">₹{item.price}</span>
                 </div>
                 <p className="text-sm text-gray-500 mb-1">{item.category}</p>
-                <p className="text-sm text-gray-600 mb-4 line-clamp-2">{item.description}</p>
+                <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.description}</p>
+                <button
+                  onClick={() => setActiveItem(item)}
+                  className="text-sm text-brand-600 font-medium hover:text-brand-700 text-left mb-3"
+                >
+                  View details &amp; reviews →
+                </button>
+                <div className="mt-auto" />
                 <button
                   onClick={() => { addItem(item); toast.success(`${item.name} added to cart`); }}
                   className={`w-full py-2 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
@@ -83,6 +138,14 @@ export default function Menu() {
             </div>
           ))}
         </div>
+      )}
+
+      {activeItem && (
+        <MenuItemModal
+          item={activeItem}
+          onClose={() => setActiveItem(null)}
+          onRatingChange={handleRatingChange}
+        />
       )}
     </div>
   );

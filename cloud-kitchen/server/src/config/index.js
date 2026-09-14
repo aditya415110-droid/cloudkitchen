@@ -24,6 +24,12 @@ const config = {
     user: process.env.EMAIL_USER,
     password: process.env.EMAIL_PASSWORD,
     from: process.env.EMAIL_FROM || 'CloudKitchen <noreply@cloudkitchen.com>',
+    // Comma-separated override for who receives new-order alerts. When unset,
+    // alerts go to every user with the ADMIN role.
+    adminEmails: (process.env.ADMIN_EMAILS || '')
+      .split(',')
+      .map(e => e.trim())
+      .filter(Boolean),
   },
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
   serverUrl: process.env.SERVER_URL || 'http://localhost:5000',

@@ -3,11 +3,15 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { api } from '../../services/api';
+import { useSettings, formatAddress } from '../../context/SettingsContext';
+import CouponInput from '../../components/common/CouponInput';
 import toast from 'react-hot-toast';
 
 export default function Checkout() {
   const { user } = useAuth();
-  const { items, total, clearCart } = useCart();
+  const { items, subtotal, discount, total, coupon, clearCart } = useCart();
+  const { settings } = useSettings();
+  const isOpen = settings.openState?.isOpen !== false;
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -27,7 +31,7 @@ export default function Checkout() {
         menuItemId: i.menuItemId,
         quantity: i.quantity,
       }));
-      const { data } = await api.createOrder(orderItems);
+      const { data } = await api.createOrder(orderItems, coupon?.code || null);
       clearCart();
       toast.success('Order placed successfully!');
       navigate(`/orders/${data._id}`);
@@ -65,18 +69,57 @@ export default function Checkout() {
             </div>
           ))}
         </div>
-        <div className="border-t mt-3 pt-3 flex justify-between text-lg">
-          <span className="font-bold">Total</span>
-          <span className="font-bold text-brand-600">₹{total.toFixed(2)}</span>
+        <div className="border-t mt-3 pt-3 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Subtotal</span>
+            <span className="font-semibold">₹{subtotal.toFixed(2)}</span>
+          </div>
+          {discount > 0 && (
+            <div className="flex justify-between text-sm text-green-700">
+              <span>Discount {coupon?.code && <span className="font-mono text-xs">({coupon.code})</span>}</span>
+              <span className="font-semibold">-₹{discount.toFixed(2)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-lg pt-2 border-t">
+            <span className="font-bold">Total</span>
+            <span className="font-bold text-brand-600">₹{total.toFixed(2)}</span>
+          </div>
         </div>
       </div>
 
+      {/* Coupon */}
+      <div className="card p-4 mb-6">
+        <h2 className="font-bold text-sm mb-3">Have a coupon?</h2>
+        <CouponInput />
+      </div>
+
+      {/* Pickup details */}
+      <div className="card p-6 mb-6">
+        <h2 className="font-bold text-lg mb-3">Pickup From</h2>
+        <p className="font-medium">{settings.restaurantName}</p>
+        {formatAddress(settings.location) && (
+          <p className="text-sm text-gray-600 mt-1">{formatAddress(settings.location)}</p>
+        )}
+        {settings.contact?.phone && (
+          <p className="text-sm text-gray-600 mt-1">
+            Questions? Call <a href={`tel:${settings.contact.phone}`} className="text-brand-600 font-medium">{settings.contact.phone}</a>
+          </p>
+        )}
+      </div>
+
+      {!isOpen && (
+        <p className="mb-4 text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+          {settings.openState?.reason || 'The kitchen is closed right now.'}
+          {settings.openState?.nextOpen && ` We reopen ${settings.openState.nextOpen.daysAhead === 0 ? 'today' : `on ${settings.openState.nextOpen.day}`} at ${settings.openState.nextOpen.openTime}.`}
+        </p>
+      )}
+
       <button
         onClick={handlePlaceOrder}
-        disabled={loading}
+        disabled={loading || !isOpen}
         className="btn-primary w-full py-3 text-lg"
       >
-        {loading ? 'Placing Order...' : 'Place Order'}
+        {loading ? 'Placing Order...' : (isOpen ? 'Place Order' : 'Kitchen Closed')}
       </button>
       <p className="text-xs text-gray-500 mt-3 text-center">
         A confirmation email with your pickup QR code will be sent to {user.email}

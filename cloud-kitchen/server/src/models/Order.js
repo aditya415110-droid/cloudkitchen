@@ -33,6 +33,23 @@ const orderSchema = new mongoose.Schema({
     required: true,
     validate: [arr => arr.length > 0, 'Order must have at least one item'],
   },
+  // Sum of item prices before any discount.
+  subtotal: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  coupon: {
+    code: { type: String, default: null },
+    discountType: { type: String, enum: ['PERCENT', 'FLAT', null], default: null },
+    discountValue: { type: Number, default: 0 },
+  },
+  discountAmount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  // subtotal - discountAmount; the amount the customer actually pays.
   totalAmount: {
     type: Number,
     required: true,
@@ -66,6 +83,7 @@ const orderSchema = new mongoose.Schema({
     confirmation: { type: Boolean, default: false },
     ready: { type: Boolean, default: false },
     cancellation: { type: Boolean, default: false },
+    adminNewOrder: { type: Boolean, default: false },
   },
 }, {
   timestamps: true,

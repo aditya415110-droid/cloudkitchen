@@ -36,6 +36,18 @@ const menuItemSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  // Denormalised review aggregates, recomputed whenever a review changes.
+  averageRating: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  },
+  reviewCount: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
 }, {
   timestamps: true,
 });

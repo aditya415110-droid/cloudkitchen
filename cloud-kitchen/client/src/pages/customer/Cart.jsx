@@ -1,9 +1,13 @@
 import { Link } from 'react-router-dom';
 import { FiTrash2, FiMinus, FiPlus, FiShoppingBag } from 'react-icons/fi';
 import { useCart } from '../../context/CartContext';
+import { useSettings } from '../../context/SettingsContext';
+import CouponInput from '../../components/common/CouponInput';
 
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, total } = useCart();
+  const { items, removeItem, updateQuantity, clearCart, subtotal, discount, total, coupon } = useCart();
+  const { settings } = useSettings();
+  const isOpen = settings.openState?.isOpen !== false;
 
   if (items.length === 0) {
     return (
@@ -60,18 +64,40 @@ export default function Cart() {
         ))}
       </div>
 
+      {/* Coupon */}
+      <div className="card p-4 mb-4">
+        <CouponInput />
+      </div>
+
       {/* Summary */}
       <div className="card p-6">
-        <div className="flex justify-between mb-4">
+        <div className="flex justify-between mb-2">
           <span className="text-gray-600">Subtotal</span>
-          <span className="font-semibold">₹{total.toFixed(2)}</span>
+          <span className="font-semibold">₹{subtotal.toFixed(2)}</span>
         </div>
+        {discount > 0 && (
+          <div className="flex justify-between mb-2 text-green-700">
+            <span>Discount {coupon?.code && <span className="font-mono text-xs">({coupon.code})</span>}</span>
+            <span className="font-semibold">-₹{discount.toFixed(2)}</span>
+          </div>
+        )}
         <div className="border-t pt-4 flex justify-between text-lg">
           <span className="font-bold">Total</span>
           <span className="font-bold text-brand-600">₹{total.toFixed(2)}</span>
         </div>
-        <Link to="/checkout" className="btn-primary w-full mt-6 block text-center py-3 text-lg">
-          Proceed to Checkout
+
+        {!isOpen && (
+          <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            {settings.openState?.reason || 'The kitchen is closed right now.'} You can still build your cart and order once we reopen.
+          </p>
+        )}
+
+        <Link
+          to="/checkout"
+          className={`btn-primary w-full mt-6 block text-center py-3 text-lg ${isOpen ? '' : 'pointer-events-none opacity-50'}`}
+          aria-disabled={!isOpen}
+        >
+          {isOpen ? 'Proceed to Checkout' : 'Currently Closed'}
         </Link>
         <Link to="/menu" className="block text-center mt-3 text-sm text-brand-600 hover:text-brand-700 font-medium">
           Continue Shopping

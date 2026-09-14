@@ -1,11 +1,41 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { api } from '../services/api';
 
 const CartContext = createContext(null);
 
 export const useCart = () => useContext(CartContext);
 
+const STORAGE_KEY = 'ck_cart';
+
+const readStoredCart = () => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
 export function CartProvider({ children }) {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState(readStoredCart);
+  // The coupon the customer has applied, plus the discount the server quoted for it.
+  const [coupon, setCoupon] = useState(null);
+  const [couponError, setCouponError] = useState('');
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+
+  const subtotal = useMemo(
+    () => Math.round(items.reduce((sum, i) => sum + i.price * i.quantity, 0) * 100) / 100,
+    [items]
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+    } catch {
+      // Storage may be full or blocked; the in-memory cart still works.
+    }
+  }, [items]);
 
   const addItem = useCallback((menuItem) => {
     setItems(prev => {
@@ -39,13 +69,72 @@ export function CartProvider({ children }) {
     );
   }, []);
 
-  const clearCart = useCallback(() => setItems([]), []);
+  const removeCoupon = useCallback(() => {
+    setCoupon(null);
+    setCouponError('');
+  }, []);
 
-  const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
+  const clearCart = useCallback(() => {
+    setItems([]);
+    setCoupon(null);
+    setCouponError('');
+  }, []);
+
+  /** Ask the server whether `code` applies to the current subtotal. */
+  const applyCoupon = useCallback(async (code) => {
+    const trimmed = (code || '').trim().toUpperCase();
+    if (!trimmed) {
+      setCouponError('Enter a coupon code.');
+      return false;
+    }
+
+    setValidatingCoupon(true);
+    setCouponError('');
+    try {
+      const { data } = await api.validateCoupon(trimmed, subtotal);
+      setCoupon({ ...data.coupon, discount: data.discount });
+      return true;
+    } catch (err) {
+      setCoupon(null);
+      setCouponError(err.message || 'This coupon could not be applied.');
+      return false;
+    } finally {
+      setValidatingCoupon(false);
+    }
+  }, [subtotal]);
+
+  // The cart can change after a coupon is applied, so re-check it against the
+  // new subtotal and drop it if it no longer qualifies.
+  useEffect(() => {
+    if (!coupon) return;
+    if (items.length === 0) { setCoupon(null); return; }
+
+    let cancelled = false;
+    api.validateCoupon(coupon.code, subtotal)
+      .then(({ data }) => {
+        if (!cancelled) setCoupon({ ...data.coupon, discount: data.discount });
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCoupon(null);
+        setCouponError(err.message || 'Your coupon no longer applies to this cart.');
+      });
+
+    return () => { cancelled = true; };
+    // Only re-validate when the amount changes, not when `coupon` itself is replaced.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtotal, items.length]);
+
+  const discount = coupon?.discount || 0;
+  const total = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, total, itemCount }}>
+    <CartContext.Provider value={{
+      items, addItem, removeItem, updateQuantity, clearCart,
+      subtotal, discount, total, itemCount,
+      coupon, couponError, validatingCoupon, applyCoupon, removeCoupon,
+    }}>
       {children}
     </CartContext.Provider>
   );

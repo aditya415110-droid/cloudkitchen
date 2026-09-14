@@ -69,7 +69,8 @@ export const api = {
   deleteMenuItem: (id) => request(`/menu/admin/${id}`, { method: 'DELETE' }),
 
   // Orders (customer)
-  createOrder: (items) => request('/orders', { method: 'POST', body: { items } }),
+  createOrder: (items, couponCode = null) =>
+    request('/orders', { method: 'POST', body: { items, couponCode } }),
   getMyOrders: () => request('/orders/my-orders'),
   getOrder: (id) => request(`/orders/${id}`),
 
@@ -84,4 +85,30 @@ export const api = {
   cancelOrder: (id) => request(`/orders/admin/${id}/cancel`, { method: 'POST' }),
   completeOrder: (id) => request(`/orders/admin/${id}/complete`, { method: 'POST' }),
   verifyQr: (qrToken) => request('/orders/admin/qr/verify', { method: 'POST', body: { qrToken } }),
+
+  // Restaurant settings
+  getSettings: () => request('/settings'),
+  updateSettings: (body) => request('/settings/admin', { method: 'PATCH', body }),
+
+  // Reviews
+  getItemReviews: (menuItemId) => request(`/menu/${menuItemId}/reviews`),
+  reviewItem: (menuItemId, rating, comment) =>
+    request(`/menu/${menuItemId}/reviews`, { method: 'POST', body: { rating, comment } }),
+  getRestaurantReviews: () => request('/reviews/restaurant'),
+  reviewRestaurant: (rating, comment) =>
+    request('/reviews/restaurant', { method: 'POST', body: { rating, comment } }),
+  getMyReviews: () => request('/reviews/mine'),
+  deleteMyReview: (reviewId) => request(`/reviews/${reviewId}`, { method: 'DELETE' }),
+  getAdminReviews: () => request('/reviews/admin/all'),
+  setReviewHidden: (reviewId, isHidden) =>
+    request(`/reviews/admin/${reviewId}/hidden`, { method: 'PATCH', body: { isHidden } }),
+  deleteReview: (reviewId) => request(`/reviews/admin/${reviewId}`, { method: 'DELETE' }),
+
+  // Coupons
+  getActiveCoupons: () => request('/coupons/active'),
+  validateCoupon: (code, subtotal) => request('/coupons/validate', { method: 'POST', body: { code, subtotal } }),
+  getAdminCoupons: () => request('/coupons/admin/all'),
+  createCoupon: (body) => request('/coupons/admin', { method: 'POST', body }),
+  updateCoupon: (id, body) => request(`/coupons/admin/${id}`, { method: 'PATCH', body }),
+  deleteCoupon: (id) => request(`/coupons/admin/${id}`, { method: 'DELETE' }),
 };

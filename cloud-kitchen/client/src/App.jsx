@@ -1,6 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Navbar from './components/layout/Navbar';
+import Footer from './components/layout/Footer';
 import AdminLayout from './components/layout/AdminLayout';
+import LoginModal from './components/common/LoginModal';
 import { useAuth } from './context/AuthContext';
 
 // Customer pages
@@ -13,6 +15,7 @@ import OrderDetail from './pages/customer/OrderDetail';
 import Account from './pages/customer/Account';
 import Login from './pages/customer/Login';
 import AuthCallback from './pages/customer/AuthCallback';
+import Reviews from './pages/customer/Reviews';
 
 // Admin pages
 import AdminDashboard from './pages/admin/Dashboard';
@@ -21,6 +24,9 @@ import AdminMenuForm from './pages/admin/MenuForm';
 import AdminOrders from './pages/admin/OrderManagement';
 import AdminOrderDetail from './pages/admin/AdminOrderDetail';
 import QrScanner from './pages/admin/QrScanner';
+import AdminSettings from './pages/admin/SettingsManagement';
+import AdminCoupons from './pages/admin/CouponManagement';
+import AdminReviews from './pages/admin/ReviewManagement';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -30,14 +36,20 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
+  const location = useLocation();
+  // The admin console has its own chrome, so the marketing footer stays out of it.
+  const isAdminRoute = location.pathname.startsWith('/admin');
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      <main className="flex-1">
+      {!isAdminRoute && <LoginModal />}
+      <main className="flex-1 flex flex-col">
         <Routes>
           {/* Customer routes */}
           <Route path="/" element={<Home />} />
           <Route path="/menu" element={<Menu />} />
+          <Route path="/reviews" element={<Reviews />} />
           <Route path="/cart" element={<Cart />} />
           <Route path="/login" element={<Login />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
@@ -55,9 +67,13 @@ export default function App() {
             <Route path="orders" element={<AdminOrders />} />
             <Route path="orders/:id" element={<AdminOrderDetail />} />
             <Route path="scanner" element={<QrScanner />} />
+            <Route path="coupons" element={<AdminCoupons />} />
+            <Route path="reviews" element={<AdminReviews />} />
+            <Route path="settings" element={<AdminSettings />} />
           </Route>
         </Routes>
       </main>
+      {!isAdminRoute && <Footer />}
     </div>
   );
 }

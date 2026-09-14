@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Navigate } from 'react-router-dom';
-import { FiGrid, FiList, FiCamera, FiMenu } from 'react-icons/fi';
+import { FiGrid, FiList, FiCamera, FiMenu, FiTag, FiStar, FiSettings } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 
 const adminLinks = [
@@ -7,6 +7,9 @@ const adminLinks = [
   { to: '/admin/menu', icon: FiMenu, label: 'Menu' },
   { to: '/admin/orders', icon: FiList, label: 'Orders' },
   { to: '/admin/scanner', icon: FiCamera, label: 'QR Scanner' },
+  { to: '/admin/coupons', icon: FiTag, label: 'Coupons' },
+  { to: '/admin/reviews', icon: FiStar, label: 'Reviews' },
+  { to: '/admin/settings', icon: FiSettings, label: 'Settings' },
 ];
 
 export default function AdminLayout() {
@@ -41,14 +44,14 @@ export default function AdminLayout() {
       </aside>
 
       {/* Mobile admin nav */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 z-50 flex justify-around py-2">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-900 z-50 flex overflow-x-auto py-2 px-1">
         {adminLinks.map(({ to, icon: Icon, label, end }) => (
           <NavLink
             key={to}
             to={to}
             end={end}
             className={({ isActive }) =>
-              `flex flex-col items-center text-xs gap-1 px-2 py-1 ${isActive ? 'text-brand-400' : 'text-gray-400'}`
+              `flex flex-col items-center text-xs gap-1 px-3 py-1 flex-shrink-0 whitespace-nowrap ${isActive ? 'text-brand-400' : 'text-gray-400'}`
             }
           >
             <Icon size={20} />

@@ -3,15 +3,29 @@ import MenuItem from '../models/MenuItem.js';
 import { generateOrderId, generateQrToken } from '../utils/generateOrderId.js';
 import { qrService } from '../services/qrService.js';
 import { emailService } from '../services/emailService.js';
+import Settings from '../models/Settings.js';
+import Coupon from '../models/Coupon.js';
+import { resolveCoupon } from './couponController.js';
+import { getOpenState } from '../utils/openingHours.js';
 
 export const orderController = {
   // Customer: place order
   async create(req, res) {
     try {
-      const { items } = req.body; // [{menuItemId, quantity}]
+      const { items, couponCode } = req.body; // items: [{menuItemId, quantity}]
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
+      }
+
+      // Refuse orders outside the admin-configured opening hours.
+      const settings = await Settings.getSettings();
+      const openState = getOpenState(settings);
+      if (!openState.isOpen) {
+        return res.status(409).json({
+          success: false,
+          message: openState.reason || 'The kitchen is currently closed. Please order during opening hours.',
+        });
       }
 
       // Validate & get current prices from DB
@@ -35,7 +49,28 @@ export const orderController = {
         };
       });
 
-      const totalAmount = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+      const subtotal = Math.round(orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0) * 100) / 100;
+
+      // Re-validate the coupon server-side; the client's quoted discount is never trusted.
+      let discountAmount = 0;
+      let couponSnapshot = { code: null, discountType: null, discountValue: 0 };
+      let appliedCoupon = null;
+
+      if (couponCode) {
+        const result = await resolveCoupon(couponCode, subtotal, req.user);
+        if (!result.ok) {
+          return res.status(400).json({ success: false, message: result.message });
+        }
+        appliedCoupon = result.coupon;
+        discountAmount = result.discount;
+        couponSnapshot = {
+          code: appliedCoupon.code,
+          discountType: appliedCoupon.discountType,
+          discountValue: appliedCoupon.discountValue,
+        };
+      }
+
+      const totalAmount = Math.round((subtotal - discountAmount) * 100) / 100;
 
       const order = await Order.create({
         orderId: generateOrderId(),
@@ -43,20 +78,34 @@ export const orderController = {
         customerEmail: req.user.email,
         customerName: req.user.name,
         items: orderItems,
+        subtotal,
+        coupon: couponSnapshot,
+        discountAmount,
         totalAmount,
         qrToken: generateQrToken(),
         estimatedPickupTime: new Date(Date.now() + 30 * 60 * 1000), // default 30 min
       });
 
+      if (appliedCoupon) {
+        await Coupon.updateOne({ _id: appliedCoupon._id }, { $inc: { usedCount: 1 } });
+      }
+
       // Generate QR data URL for response
       const qrDataUrl = await qrService.generateQrDataUrl(order.qrToken);
 
-      // Send confirmation email (non-blocking)
+      // Notify the customer and the kitchen (non-blocking; a mail failure must
+      // never fail the order that was already written).
       emailService.sendOrderConfirmation(order).then(sent => {
         if (sent) {
           Order.updateOne({ _id: order._id }, { 'emailsSent.confirmation': true }).exec();
         }
-      });
+      }).catch(err => console.error('Order confirmation email error:', err.message));
+
+      emailService.sendNewOrderAdminNotification(order).then(sent => {
+        if (sent) {
+          Order.updateOne({ _id: order._id }, { 'emailsSent.adminNewOrder': true }).exec();
+        }
+      }).catch(err => console.error('Admin new-order email error:', err.message));
 
       // Emit to admin room
       const io = req.app.get('io');
@@ -203,6 +252,11 @@ export const orderController = {
     order.cancelledAt = new Date();
     order.cancelledBy = req.user.email;
     order.qrUsed = true; // invalidate QR
+
+    // Give the coupon use back so the customer can redeem it again.
+    if (order.coupon?.code) {
+      await Coupon.updateOne({ code: order.coupon.code, usedCount: { $gt: 0 } }, { $inc: { usedCount: -1 } });
+    }
 
     if (!order.emailsSent.cancellation) {
       emailService.sendOrderCancellationNotification(order).then(sent => {

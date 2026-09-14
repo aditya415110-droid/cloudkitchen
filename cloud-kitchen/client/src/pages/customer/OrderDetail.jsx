@@ -114,9 +114,23 @@ export default function OrderDetail() {
             </div>
           ))}
         </div>
-        <div className="border-t mt-3 pt-3 flex justify-between text-lg">
-          <span className="font-bold">Total</span>
-          <span className="font-bold text-brand-600">₹{order.totalAmount.toFixed(2)}</span>
+        <div className="border-t mt-3 pt-3 space-y-2">
+          {order.discountAmount > 0 && (
+            <>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="font-semibold">₹{(order.subtotal ?? order.totalAmount).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm text-green-700">
+                <span>Discount {order.coupon?.code && <span className="font-mono text-xs">({order.coupon.code})</span>}</span>
+                <span className="font-semibold">-₹{order.discountAmount.toFixed(2)}</span>
+              </div>
+            </>
+          )}
+          <div className="flex justify-between text-lg">
+            <span className="font-bold">Total</span>
+            <span className="font-bold text-brand-600">₹{order.totalAmount.toFixed(2)}</span>
+          </div>
         </div>
         <p className="text-xs text-gray-400 mt-3">Ordered: {new Date(order.createdAt).toLocaleString('en-IN')}</p>
       </div>

@@ -1,12 +1,15 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
-import { FiShoppingCart, FiMenu, FiX, FiUser, FiLogOut } from 'react-icons/fi';
+import { FiShoppingCart, FiMenu, FiX, FiUser, FiLogOut, FiPhone } from 'react-icons/fi';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
+import { useSettings } from '../../context/SettingsContext';
 
 export default function Navbar() {
   const { user, signInWithGoogle, signOut } = useAuth();
   const { itemCount } = useCart();
+  const { settings } = useSettings();
+  const isOpen = settings.openState?.isOpen !== false;
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -14,13 +17,31 @@ export default function Navbar() {
     <nav className="bg-white shadow-sm sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          <Link to="/" className="flex items-center gap-2 font-bold text-xl text-brand-600">
-            <span className="text-2xl">🍽️</span> CloudKitchen
+          <Link to="/" className="flex items-center gap-2.5 font-bold text-xl text-brand-600 min-w-0">
+            <img src="/logo.png" alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+            <span className="flex flex-col leading-tight min-w-0">
+              <span className="truncate">{settings.restaurantName}</span>
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wide ${isOpen ? 'text-green-600' : 'text-red-500'}`}
+                title={isOpen ? 'Accepting orders' : (settings.openState?.reason || 'Closed')}
+              >
+                {isOpen ? '● Open' : '● Closed'}
+              </span>
+            </span>
           </Link>
 
           {/* Desktop nav */}
           <div className="hidden md:flex items-center gap-6">
             <Link to="/menu" className="text-gray-700 hover:text-brand-600 font-medium">Menu</Link>
+            <Link to="/reviews" className="text-gray-700 hover:text-brand-600 font-medium">Reviews</Link>
+            {settings.contact?.phone && (
+              <a
+                href={`tel:${settings.contact.phone}`}
+                className="hidden lg:flex items-center gap-1.5 text-gray-700 hover:text-brand-600 font-medium"
+              >
+                <FiPhone size={16} /> {settings.contact.phone}
+              </a>
+            )}
             {user && (
               <Link to="/orders" className="text-gray-700 hover:text-brand-600 font-medium">My Orders</Link>
             )}
@@ -74,6 +95,12 @@ export default function Navbar() {
         {menuOpen && (
           <div className="md:hidden pb-4 space-y-2">
             <Link to="/menu" onClick={() => setMenuOpen(false)} className="block py-2 text-gray-700 hover:text-brand-600 font-medium">Menu</Link>
+            <Link to="/reviews" onClick={() => setMenuOpen(false)} className="block py-2 text-gray-700 hover:text-brand-600 font-medium">Reviews</Link>
+            {settings.contact?.phone && (
+              <a href={`tel:${settings.contact.phone}`} className="flex items-center gap-2 py-2 text-gray-700 font-medium">
+                <FiPhone size={16} /> {settings.contact.phone}
+              </a>
+            )}
             {user && (
               <Link to="/orders" onClick={() => setMenuOpen(false)} className="block py-2 text-gray-700 hover:text-brand-600 font-medium">My Orders</Link>
             )}

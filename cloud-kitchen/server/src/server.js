@@ -14,6 +14,9 @@ import { authenticate, requireAdmin } from './middleware/auth.js';
 import authRoutes from './routes/auth.js';
 import menuRoutes from './routes/menu.js';
 import orderRoutes from './routes/orders.js';
+import settingsRoutes from './routes/settings.js';
+import couponRoutes from './routes/coupons.js';
+import reviewRoutes from './routes/reviews.js';
 
 const app = express();
 const httpServer = createServer(app);
@@ -102,12 +105,16 @@ const orderLimiter = rateLimit({
 app.use('/api/', apiLimiter);
 
 // Routes
+// The stricter order limiter must be registered before the router, or the
+// router handles the request first and the limiter never runs.
+app.post('/api/orders', orderLimiter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/menu', menuRoutes);
 app.use('/api/orders', orderRoutes);
-
-// Order creation has stricter rate limit
-app.post('/api/orders', orderLimiter);
+app.use('/api/settings', settingsRoutes);
+app.use('/api/coupons', couponRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
