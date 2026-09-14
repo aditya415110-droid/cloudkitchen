@@ -1,5 +1,7 @@
 import Settings from '../models/Settings.js';
 import { getOpenState, DAYS } from '../utils/openingHours.js';
+import { emailService, verifyEmailConnection, isEmailConfigured } from '../services/emailService.js';
+import config from '../config/index.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -73,5 +75,42 @@ export const settingsController = {
       console.error('Update settings error:', error);
       res.status(400).json({ success: false, message: error.message || 'Failed to update settings.' });
     }
+  },
+
+  // Admin: is outbound email actually working from this host?
+  async emailStatus(req, res) {
+    const result = await verifyEmailConnection();
+    res.json({
+      success: true,
+      data: {
+        ...result,
+        configured: isEmailConfigured(),
+        // Never echo the password back, only whether it is present.
+        settings: {
+          host: config.email.host || null,
+          port: config.email.port,
+          secure: config.email.secure,
+          user: config.email.user || null,
+          from: config.email.from,
+          passwordSet: Boolean(config.email.password),
+          adminEmails: config.email.adminEmails,
+        },
+      },
+    });
+  },
+
+  // Admin: send a real test email to confirm delivery end to end.
+  async sendTestEmail(req, res) {
+    const to = (req.body?.to || req.user.email || '').trim();
+    if (!to) return res.status(400).json({ success: false, message: 'No recipient address available.' });
+
+    const sent = await emailService.sendTestEmail(to);
+    if (!sent) {
+      return res.status(502).json({
+        success: false,
+        message: 'The test email could not be sent. Check the server logs for the SMTP error.',
+      });
+    }
+    res.json({ success: true, message: `Test email sent to ${to}.` });
   },
 };

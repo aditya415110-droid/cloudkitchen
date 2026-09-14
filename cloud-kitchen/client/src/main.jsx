@@ -15,7 +15,19 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <SettingsProvider>
           <CartProvider>
             <App />
-            <Toaster position="top-right" toastOptions={{ duration: 3000 }} />
+            <Toaster
+              position="top-right"
+              // The navbar is a sticky 64px bar, so offset below it: toasts used
+              // to sit on top of the nav links and swallow their clicks.
+              containerStyle={{ top: 76, right: 16 }}
+              gutter={8}
+              toastOptions={{
+                duration: 2000,
+                success: { duration: 1800 },
+                error: { duration: 3500 },
+                style: { maxWidth: '340px' },
+              }}
+            />
           </CartProvider>
         </SettingsProvider>
       </AuthProvider>

@@ -141,6 +141,19 @@ const start = async () => {
   httpServer.listen(config.port, () => {
     console.log(`CloudKitchen server running on port ${config.port}`);
   });
+
+  // Report SMTP reachability at boot so a mail problem shows up in the logs
+  // immediately, instead of only when a customer places an order.
+  const { verifyEmailConnection } = await import('./services/emailService.js');
+  const result = await verifyEmailConnection();
+  if (result.ok) {
+    console.log(`SMTP ready: ${result.host}:${result.port} as ${result.user}`);
+  } else if (result.reason === 'not_configured') {
+    console.warn(`SMTP not configured: ${result.message} Order emails are disabled.`);
+  } else {
+    console.error(`SMTP UNAVAILABLE: ${result.message}`);
+    console.error('Order emails will fail until this is resolved.');
+  }
 };
 
 start();

@@ -4,26 +4,75 @@ import { qrService } from './qrService.js';
 import Settings from '../models/Settings.js';
 import User from '../models/User.js';
 
-let transporter = null;
 let warnedUnconfigured = false;
+const transports = new Map();
 
 /** SMTP is only usable once a host and credentials are present. */
-const isEmailConfigured = () =>
+export const isEmailConfigured = () =>
   Boolean(config.email.host && config.email.user && config.email.password);
 
-const getTransporter = () => {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
+/**
+ * Build (and cache) a transport for one port.
+ *
+ * The timeouts matter in production: several PaaS providers silently drop
+ * outbound SMTP instead of refusing it, so without them a blocked port hangs
+ * the send for minutes rather than failing with a usable error.
+ */
+const getTransporter = (port = config.email.port, secure = config.email.secure) => {
+  const key = `${port}:${secure}`;
+  if (!transports.has(key)) {
+    transports.set(key, nodemailer.createTransport({
       host: config.email.host,
-      port: config.email.port,
-      secure: config.email.secure,
+      port,
+      secure,
       auth: {
         user: config.email.user,
         pass: config.email.password,
       },
-    });
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 20000,
+    }));
   }
-  return transporter;
+  return transports.get(key);
+};
+
+// Implicit TLS on 465 is the usual way around a provider that blocks 587.
+const FALLBACK_PORT = 465;
+const isFallbackAvailable = () => config.email.port !== FALLBACK_PORT;
+
+/** Connection-level failures are worth retrying on the other port; auth errors are not. */
+const isConnectionError = (err) => {
+  const code = err?.code || '';
+  return ['ETIMEDOUT', 'ECONNREFUSED', 'ECONNRESET', 'ESOCKET', 'EDNS', 'ECONNECTION', 'EHOSTUNREACH']
+    .includes(code) || /timeout|timed out/i.test(err?.message || '');
+};
+
+/**
+ * Check that SMTP is reachable and the credentials are accepted.
+ * Returns a plain result object so it can back both a startup log and an
+ * admin-facing diagnostic endpoint.
+ */
+export const verifyEmailConnection = async () => {
+  if (!isEmailConfigured()) {
+    return { ok: false, reason: 'not_configured', message: 'EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD are not all set.' };
+  }
+
+  const attempts = [{ port: config.email.port, secure: config.email.secure }];
+  if (isFallbackAvailable()) attempts.push({ port: FALLBACK_PORT, secure: true });
+
+  const errors = [];
+  for (const { port, secure } of attempts) {
+    try {
+      await getTransporter(port, secure).verify();
+      return { ok: true, port, secure, host: config.email.host, user: config.email.user };
+    } catch (err) {
+      errors.push(`port ${port}: ${err.code || 'ERROR'} ${err.message}`);
+      if (!isConnectionError(err)) break; // bad credentials fail the same way on every port
+    }
+  }
+
+  return { ok: false, reason: 'unreachable', message: errors.join(' | '), host: config.email.host };
 };
 
 /**
@@ -45,12 +94,38 @@ const deliver = async (message, label) => {
     return false;
   }
 
+  const payload = { from: config.email.from, ...message };
+
   try {
-    await getTransporter().sendMail({ from: config.email.from, ...message });
+    await getTransporter().sendMail(payload);
     console.log(`Sent ${label} to ${message.to}`);
     return true;
   } catch (err) {
-    console.error(`Failed to send ${label} to ${message.to}:`, err.message);
+    const detail = `${err.code || 'ERROR'} ${err.message}`;
+
+    // A blocked port looks like a connection failure, not a rejection, so it is
+    // worth one retry over implicit TLS before giving up.
+    if (isConnectionError(err) && isFallbackAvailable()) {
+      console.warn(`SMTP port ${config.email.port} unreachable (${detail}); retrying ${label} on ${FALLBACK_PORT}.`);
+      try {
+        await getTransporter(FALLBACK_PORT, true).sendMail(payload);
+        console.log(`Sent ${label} to ${message.to} via port ${FALLBACK_PORT}.`);
+        console.warn(`Set EMAIL_PORT=${FALLBACK_PORT} and EMAIL_SECURE=true to skip the failed attempt next time.`);
+        return true;
+      } catch (fallbackErr) {
+        console.error(
+          `Failed to send ${label} to ${message.to} on both ports. ` +
+          `${config.email.port}: ${detail}; ${FALLBACK_PORT}: ${fallbackErr.code || 'ERROR'} ${fallbackErr.message}. ` +
+          'If both time out, the host is blocking outbound SMTP - use an HTTP email API instead.'
+        );
+        return false;
+      }
+    }
+
+    console.error(`Failed to send ${label} to ${message.to}: ${detail}`);
+    if (err.code === 'EAUTH') {
+      console.error('Gmail rejected the credentials. Check EMAIL_USER and that EMAIL_PASSWORD is a current App Password with no spaces.');
+    }
     return false;
   }
 };
@@ -143,6 +218,28 @@ const resolveAdminRecipients = async () => {
 };
 
 export const emailService = {
+  /** Plain deliverability check, used by the admin diagnostics endpoint. */
+  async sendTestEmail(to) {
+    const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
+      <div class="container">
+        <div class="header"><h1>Email is working</h1></div>
+        <div class="content">
+          <p>This is a test message from your CloudKitchen server.</p>
+          <div class="order-info">
+            <p><strong>Sent from:</strong> ${config.serverUrl}</p>
+            <p><strong>Environment:</strong> ${config.nodeEnv}</p>
+            <p><strong>SMTP host:</strong> ${config.email.host}:${config.email.port}</p>
+            <p><strong>Time:</strong> ${formatDate(new Date())}</p>
+          </div>
+          <p>Order confirmations and new-order alerts will be delivered from this address.</p>
+        </div>
+        ${await footerHtml('CloudKitchen')}
+      </div>
+    </body></html>`;
+
+    return deliver({ to, subject: 'CloudKitchen - SMTP test', html }, 'test email');
+  },
+
   async sendOrderConfirmation(order) {
     const qrBuffer = await qrService.generateQrBuffer(order.qrToken);
 
