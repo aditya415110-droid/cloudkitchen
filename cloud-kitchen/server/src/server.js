@@ -32,6 +32,13 @@ const io = new Server(httpServer, {
 
 app.set('io', io);
 
+// Render (like most PaaS) terminates TLS at a proxy and passes the real client
+// IP in X-Forwarded-For. Without this, express-rate-limit sees only the proxy
+// address and would throttle every user as if they were one.
+if (config.nodeEnv === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Socket.IO auth and room management
 io.use(async (socket, next) => {
   // Optional: verify token for socket connections
@@ -147,7 +154,9 @@ const start = async () => {
   const { verifyEmailConnection } = await import('./services/emailService.js');
   const result = await verifyEmailConnection();
   if (result.ok) {
-    console.log(`SMTP ready: ${result.host}:${result.port} as ${result.user}`);
+    console.log(result.transport === 'smtp'
+      ? `Email ready: SMTP ${result.host}:${result.port} as ${result.user}`
+      : `Email ready: ${result.provider} over HTTPS`);
   } else if (result.reason === 'not_configured') {
     console.warn(`SMTP not configured: ${result.message} Order emails are disabled.`);
   } else {

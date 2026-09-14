@@ -38,16 +38,29 @@ const required = (key) => {
 };
 
 /**
- * Treat an unreplaced template value as unset.
+ * Accept a Supabase API key only if it has a usable shape.
  *
- * A placeholder like YOUR_SUPABASE_SERVICE_ROLE_KEY is a non-empty string, so
- * it gets used as a real credential and fails deep inside the client with
- * something opaque ("Invalid Compact JWS") rather than at startup.
+ * Supabase keys are either a JWT (three dot-separated segments) or the newer
+ * `sb_secret_` / `sb_publishable_` format. Anything else - an unreplaced
+ * placeholder, a project ref pasted by mistake, a truncated copy - is sent as a
+ * credential and fails deep inside the storage client with an opaque
+ * "Invalid Compact JWS" at upload time. Rejecting it here turns that into one
+ * clear warning at startup, and lets the caller fall back to the anon key.
  */
-const notPlaceholder = (value) => {
+const validSupabaseKey = (value, label) => {
   if (!value) return '';
-  const looksUnreplaced = /^(YOUR_|<|xxx+$|changeme$|replace)/i.test(value) || value.includes('_HERE');
-  return looksUnreplaced ? '' : value;
+
+  const isJwt = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value);
+  const isNewFormat = /^sb_(secret|publishable)_[A-Za-z0-9_-]+$/.test(value);
+
+  if (isJwt || isNewFormat) return value;
+
+  console.warn(
+    `${label} does not look like a Supabase key and will be ignored. ` +
+    'Expected a JWT (three dot-separated parts) or an sb_secret_... value ' +
+    'from Supabase > Settings > API.'
+  );
+  return '';
 };
 
 const config = {
@@ -57,7 +70,7 @@ const config = {
     url: required('SUPABASE_URL'),
     // The anon key is publishable by design; it ships in the browser bundle.
     anonKey: required('SUPABASE_ANON_KEY'),
-    serviceRoleKey: notPlaceholder(env('SUPABASE_SERVICE_ROLE_KEY')),
+    serviceRoleKey: validSupabaseKey(env('SUPABASE_SERVICE_ROLE_KEY'), 'SUPABASE_SERVICE_ROLE_KEY'),
   },
   jwt: {
     // Unused: authentication is handled entirely by Supabase JWT verification
