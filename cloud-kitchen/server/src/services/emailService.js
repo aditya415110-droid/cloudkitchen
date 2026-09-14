@@ -8,8 +8,227 @@ let warnedUnconfigured = false;
 const transports = new Map();
 
 /** SMTP is only usable once a host and credentials are present. */
-export const isEmailConfigured = () =>
+const isSmtpConfigured = () =>
   Boolean(config.email.host && config.email.user && config.email.password);
+
+/**
+ * Which delivery mechanism to use.
+ *
+ * 'auto' prefers an HTTP provider, because SMTP is blocked outright on some
+ * hosts (Render's free tier blocks ports 25/465/587) while plain HTTPS is not.
+ */
+const HTTP_PROVIDERS = ['relay', 'mailjet', 'brevo', 'resend'];
+
+export const activeProvider = () => {
+  const choice = config.email.provider;
+  if (choice === 'smtp' || HTTP_PROVIDERS.includes(choice)) return choice;
+
+  if (config.email.relayUrl && config.email.relaySecret) return 'relay';
+  if (config.email.mailjetApiKey && config.email.mailjetApiSecret) return 'mailjet';
+  if (config.email.brevoApiKey) return 'brevo';
+  if (config.email.resendApiKey) return 'resend';
+  return 'smtp';
+};
+
+export const isEmailConfigured = () => {
+  switch (activeProvider()) {
+    case 'relay':
+      return Boolean(config.email.relayUrl && config.email.relaySecret && config.email.from);
+    case 'mailjet':
+      return Boolean(config.email.mailjetApiKey && config.email.mailjetApiSecret && config.email.from);
+    case 'brevo': return Boolean(config.email.brevoApiKey && config.email.from);
+    case 'resend': return Boolean(config.email.resendApiKey && config.email.from);
+    default: return isSmtpConfigured();
+  }
+};
+
+/** Split "Name <a@b.com>" into its parts; bare addresses get an empty name. */
+const parseAddress = (value) => {
+  const match = /^\s*(.*?)\s*<\s*([^>]+)\s*>\s*$/.exec(value || '');
+  if (match) return { name: match[1].replace(/^["']|["']$/g, ''), email: match[2] };
+  return { name: '', email: (value || '').trim() };
+};
+
+const splitRecipients = (to) =>
+  String(to || '').split(',').map(a => parseAddress(a).email).filter(Boolean);
+
+/** POST JSON and surface a non-2xx body as an Error, the way SMTP errors read. */
+const postJson = async (url, headers, body) => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json', ...headers },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(15000),
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    const err = new Error(`HTTP ${response.status}: ${text.slice(0, 400)}`);
+    err.code = response.status === 401 || response.status === 403 ? 'EAUTH' : 'EAPI';
+    err.responseCode = response.status;
+    throw err;
+  }
+
+  try { return JSON.parse(text); } catch { return {}; }
+};
+
+/**
+ * Supabase Edge Function relay.
+ *
+ * Render blocks outbound SMTP, but the Edge Function runtime permits port 465,
+ * so the message travels here over HTTPS and is handed to Gmail from there.
+ */
+const sendViaRelay = async (payload) => {
+  const result = await postJson(
+    config.email.relayUrl,
+    {
+      'x-relay-secret': config.email.relaySecret,
+      // Sent so the call also succeeds if the function is left with Supabase's
+      // default "Verify JWT" enabled; harmless when it is switched off. The
+      // real authorisation is the relay secret above.
+      ...(config.supabase.anonKey ? { authorization: `Bearer ${config.supabase.anonKey}` } : {}),
+    },
+    {
+      from: payload.from,
+      to: payload.to,
+      subject: payload.subject,
+      html: payload.html,
+      ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
+      ...(payload.attachments?.length
+        ? {
+            attachments: payload.attachments.map(a => ({
+              filename: a.filename,
+              contentType: a.contentType || 'application/octet-stream',
+              contentBase64: Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content,
+              ...(a.cid ? { contentId: a.cid } : {}),
+            })),
+          }
+        : {}),
+    }
+  );
+
+  if (!result.ok) {
+    const err = new Error(result.error || 'The relay reported a failure.');
+    err.code = 'EAPI';
+    throw err;
+  }
+  return { messageId: undefined, response: `relayed via ${result.via || 'Supabase'}` };
+};
+
+/** Mailjet keeps inline parts in InlinedAttachments, downloads in Attachments. */
+const mailjetParts = (attachments = []) => {
+  if (!attachments.length) return {};
+
+  const encode = (a) => ({
+    ContentType: a.contentType || 'application/octet-stream',
+    Filename: a.filename,
+    Base64Content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content,
+  });
+
+  const inline = attachments.filter(a => a.cid);
+  const plain = attachments.filter(a => !a.cid);
+
+  return {
+    ...(inline.length
+      ? { InlinedAttachments: inline.map(a => ({ ...encode(a), ContentID: a.cid })) }
+      : {}),
+    ...(plain.length ? { Attachments: plain.map(encode) } : {}),
+  };
+};
+
+/**
+ * Mailjet Send API v3.1.
+ *
+ * Note the unusual error contract: a per-message failure still returns HTTP 200
+ * with Status "error" inside the body, so the status has to be inspected rather
+ * than relying on the response code.
+ */
+const sendViaMailjet = async (payload) => {
+  const sender = parseAddress(payload.from);
+  const auth = Buffer
+    .from(`${config.email.mailjetApiKey}:${config.email.mailjetApiSecret}`)
+    .toString('base64');
+
+  const result = await postJson(
+    'https://api.mailjet.com/v3.1/send',
+    { authorization: `Basic ${auth}` },
+    {
+      Messages: [{
+        From: { Email: sender.email, ...(sender.name ? { Name: sender.name } : {}) },
+        To: splitRecipients(payload.to).map(Email => ({ Email })),
+        Subject: payload.subject,
+        HTMLPart: payload.html,
+        ...(payload.replyTo ? { ReplyTo: { Email: parseAddress(payload.replyTo).email } } : {}),
+        ...(mailjetParts(payload.attachments)),
+      }],
+    }
+  );
+
+  const message = result?.Messages?.[0];
+  if (!message || message.Status !== 'success') {
+    const reasons = (message?.Errors || [])
+      .map(e => `${e.ErrorCode || ''} ${e.ErrorMessage || ''}`.trim())
+      .join('; ');
+    const err = new Error(reasons || `Mailjet returned status "${message?.Status || 'unknown'}".`);
+    // 'unauthorized' / sender errors surface here rather than as an HTTP 4xx.
+    err.code = /api key|unauthorized/i.test(reasons) ? 'EAUTH' : 'EAPI';
+    throw err;
+  }
+
+  return { messageId: message.To?.[0]?.MessageID, response: 'accepted by Mailjet' };
+};
+
+/** Brevo transactional API. Single-sender verification, no DNS records needed. */
+const sendViaBrevo = async (payload) => {
+  const sender = parseAddress(payload.from);
+  const result = await postJson(
+    'https://api.brevo.com/v3/smtp/email',
+    { 'api-key': config.email.brevoApiKey },
+    {
+      sender: { email: sender.email, ...(sender.name ? { name: sender.name } : {}) },
+      to: splitRecipients(payload.to).map(email => ({ email })),
+      subject: payload.subject,
+      htmlContent: payload.html,
+      ...(payload.replyTo ? { replyTo: { email: parseAddress(payload.replyTo).email } } : {}),
+      // Brevo has no cid support, so attachments are downloads only; the HTML
+      // references images by absolute URL instead.
+      ...(payload.attachments?.length
+        ? {
+            attachment: payload.attachments.map(a => ({
+              name: a.filename,
+              content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content,
+            })),
+          }
+        : {}),
+    }
+  );
+  return { messageId: result.messageId, response: 'accepted by Brevo' };
+};
+
+/** Resend API. Requires a verified domain to reach anyone but your own address. */
+const sendViaResend = async (payload) => {
+  const result = await postJson(
+    'https://api.resend.com/emails',
+    { authorization: `Bearer ${config.email.resendApiKey}` },
+    {
+      from: payload.from,
+      to: splitRecipients(payload.to),
+      subject: payload.subject,
+      html: payload.html,
+      ...(payload.replyTo ? { reply_to: payload.replyTo } : {}),
+      ...(payload.attachments?.length
+        ? {
+            attachments: payload.attachments.map(a => ({
+              filename: a.filename,
+              content: Buffer.isBuffer(a.content) ? a.content.toString('base64') : a.content,
+              ...(a.cid ? { content_id: a.cid } : {}),
+            })),
+          }
+        : {}),
+    }
+  );
+  return { messageId: result.id, response: 'accepted by Resend' };
+};
 
 /**
  * Build (and cache) a transport for one port.
@@ -54,8 +273,26 @@ const isConnectionError = (err) => {
  * admin-facing diagnostic endpoint.
  */
 export const verifyEmailConnection = async () => {
+  const provider = activeProvider();
+
   if (!isEmailConfigured()) {
-    return { ok: false, reason: 'not_configured', message: 'EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD are not all set.' };
+    const message = provider === 'smtp'
+      ? 'EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD are not all set.'
+      : `${provider.toUpperCase()}_API_KEY and EMAIL_FROM are not both set.`;
+    return { ok: false, provider, reason: 'not_configured', message };
+  }
+
+  // HTTP providers have no connection to open; the credentials are only
+  // exercised on a real send, so report configuration rather than a false OK.
+  if (provider !== 'smtp') {
+    return {
+      ok: true,
+      provider,
+      transport: 'https',
+      message: provider === 'relay'
+        ? 'Configured to send through the Supabase Edge Function relay over HTTPS. Use "Send Test" to confirm the relay and its SMTP credentials work.'
+        : `Configured to send over the ${provider} HTTPS API. Use "Send Test" to confirm the key and sender are accepted.`,
+    };
   }
 
   const attempts = [{ port: config.email.port, secure: config.email.secure }];
@@ -65,14 +302,22 @@ export const verifyEmailConnection = async () => {
   for (const { port, secure } of attempts) {
     try {
       await getTransporter(port, secure).verify();
-      return { ok: true, port, secure, host: config.email.host, user: config.email.user };
+      return { ok: true, provider, transport: 'smtp', port, secure, host: config.email.host, user: config.email.user };
     } catch (err) {
       errors.push(`port ${port}: ${err.code || 'ERROR'} ${err.message}`);
       if (!isConnectionError(err)) break; // bad credentials fail the same way on every port
     }
   }
 
-  return { ok: false, reason: 'unreachable', message: errors.join(' | '), host: config.email.host };
+  return {
+    ok: false,
+    provider,
+    transport: 'smtp',
+    reason: 'unreachable',
+    message: errors.join(' | '),
+    host: config.email.host,
+    hint: 'If every port times out, this host blocks outbound SMTP. Set MAILJET_API_KEY and MAILJET_API_SECRET to send over HTTPS instead.',
+  };
 };
 
 /**
@@ -81,8 +326,42 @@ export const verifyEmailConnection = async () => {
  * Without SMTP settings this reports the skip loudly and returns false, so the
  * caller never records an email as sent that in truth was never dispatched.
  */
-/** Turn an SMTP error into a short, non-obvious-cause hint for the admin UI. */
-const explainError = (err) => {
+/** Turn a delivery error into a short, non-obvious-cause hint for the admin UI. */
+const explainError = (err, provider = 'smtp') => {
+  if (HTTP_PROVIDERS.includes(provider)) {
+    if (provider === 'relay') {
+      if (/unauthorized/i.test(err.message || '')) {
+        return 'The relay rejected the shared secret. EMAIL_RELAY_SECRET here must match RELAY_SECRET set on the Edge Function.';
+      }
+      if (/not configured/i.test(err.message || '')) {
+        return 'The Edge Function is missing its secrets. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD and RELAY_SECRET with "supabase secrets set".';
+      }
+      if (/username and password|invalid login|535/i.test(err.message || '')) {
+        return 'Gmail rejected the credentials held by the relay. SMTP_PASSWORD must be a current App Password.';
+      }
+      return 'The relay was reached but delivery failed. See the raw error below.';
+    }
+    // A blocked account also answers 401, but the keys are fine and saying
+    // "check your keys" sends you chasing the wrong thing.
+    if (/blocked|suspend|under review/i.test(err.message || '')) {
+      return `${provider} accepted the credentials but has put the account on hold, so it will not send. `
+        + 'This is usually a new-account review. Contact their support to release it, or switch provider '
+        + '(set BREVO_API_KEY) in the meantime.';
+    }
+    if (err.code === 'EAUTH') {
+      return provider === 'mailjet'
+        ? 'Mailjet rejected the credentials. Check MAILJET_API_KEY and MAILJET_API_SECRET.'
+        : `The ${provider} API key was rejected. Check ${provider.toUpperCase()}_API_KEY.`;
+    }
+    if (/sender|from/i.test(err.message || '')) {
+      return `${provider} refused the sender address. The EMAIL_FROM address must be verified in your ${provider} account first.`;
+    }
+    if (/domain|not verified|testing/i.test(err.message || '')) {
+      return 'The sender domain is not verified, so this provider will only deliver to your own address. Verify a sender (Brevo) or a domain (Resend).';
+    }
+    return 'See the raw API response below.';
+  }
+
   if (err.code === 'EAUTH') {
     return 'Gmail rejected the credentials. EMAIL_PASSWORD must be a current App Password (16 characters, no spaces), not the account password.';
   }
@@ -121,7 +400,28 @@ const deliverDetailed = async (message, label) => {
     };
   }
 
-  const payload = { from: config.email.from, ...message };
+  const payload = { from: config.email.from, ...message, html: normalizeHtml(message.html) };
+  const provider = activeProvider();
+
+  // HTTP providers are a single attempt: there is no port to fall back to.
+  if (provider !== 'smtp') {
+    const startedAt = Date.now();
+    try {
+      const send = {
+        relay: sendViaRelay, mailjet: sendViaMailjet, brevo: sendViaBrevo, resend: sendViaResend,
+      }[provider];
+      const info = await send(payload);
+      attempts.push({ provider, ok: true, ms: Date.now() - startedAt, response: info.response });
+      console.log(`Sent ${label} to ${message.to} via ${provider}.`);
+      return { ok: true, provider, attempts, via: { provider }, messageId: info.messageId };
+    } catch (err) {
+      const detail = `${err.code || 'ERROR'} ${err.message}`;
+      attempts.push({ provider, ok: false, ms: Date.now() - startedAt, error: detail });
+      console.error(`Failed to send ${label} to ${message.to} via ${provider}: ${detail}`);
+      return { ok: false, provider, attempts, error: detail, hint: explainError(err, provider) };
+    }
+  }
+
   const ports = [{ port: config.email.port, secure: config.email.secure }];
   // A blocked port looks like a connection failure, so implicit TLS is worth a retry.
   if (isFallbackAvailable()) ports.push({ port: FALLBACK_PORT, secure: true });
@@ -160,12 +460,49 @@ const deliverDetailed = async (message, label) => {
     ok: false,
     attempts,
     error: last?.error || 'All SMTP attempts failed.',
-    hint: 'Every port timed out, so this host is almost certainly blocking outbound SMTP. Use an HTTP email API instead.',
+    hint: 'Every port timed out, so this host is blocking outbound SMTP (Render blocks 25/465/587 on free web services). Set MAILJET_API_KEY and MAILJET_API_SECRET to send over HTTPS instead.',
   };
 };
 
 /** Boolean wrapper for the order emails, which only care whether it went out. */
 const deliver = async (message, label) => (await deliverDetailed(message, label)).ok;
+
+/**
+ * Strip trailing whitespace and blank lines from generated HTML.
+ *
+ * Quoted-printable encodes a trailing space as "=20", and the template literals
+ * below leave lines of pure indentation wherever a conditional block renders
+ * empty. Those surfaced as literal "=20 =20" text in delivered mail.
+ */
+const normalizeHtml = (html) => String(html || '')
+  .split('\n')
+  .map(line => line.replace(/[ \t]+$/, ''))
+  .filter(line => line.length > 0)
+  .join('\n');
+
+/**
+ * Whether the active provider can render <img src="cid:..."> inline.
+ * Brevo's API has no content-id support, so it falls back to the hosted URL.
+ */
+const supportsInlineImages = () => activeProvider() !== 'brevo';
+
+/** Content id used for the embedded pickup QR. */
+const QR_CID = 'pickupqr';
+
+/**
+ * Where the QR <img> should point.
+ *
+ * Embedding wins wherever it is supported: a hosted URL depends on the API
+ * being awake and publicly reachable when the customer opens the mail, and on
+ * free hosting that spins down when idle it frequently is not.
+ */
+const qrImageSrc = () => (supportsInlineImages() ? `cid:${QR_CID}` : null);
+
+/** The customer's own order page, where the QR is always rendered in-app. */
+const orderPageUrl = (order) => `${config.clientUrl}/orders/${order._id}`;
+
+/** Absolute URL of an order's QR PNG, served by the API for email clients. */
+const qrImageUrl = (order) => `${config.serverUrl}/api/orders/qr/${order.qrToken}.png`;
 
 const formatCurrency = (amount) => `₹${amount.toFixed(2)}`;
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'TBD';
@@ -295,7 +632,12 @@ export const emailService = {
           <div class="qr-section">
             <p><strong>Your Pickup QR Code</strong></p>
             <p style="color:#6b7280;font-size:13px;">Show this at pickup</p>
-            <img src="cid:qrcode" alt="QR Code" width="200" height="200" />
+            <img src="${qrImageSrc() || qrImageUrl(order)}" alt="Pickup QR code" width="200" height="200" style="display:block;margin:0 auto;" />
+            <p style="margin-top:14px;">
+              <a href="${orderPageUrl(order)}" style="color:#ea580c;font-weight:600;text-decoration:none;">
+                Can't see the code? Open your order &rarr;
+              </a>
+            </p>
           </div>
         </div>
         ${await footerHtml('Thank you for ordering from CloudKitchen!')}
@@ -306,10 +648,12 @@ export const emailService = {
       to: order.customerEmail,
       subject: `CloudKitchen - Order Confirmed #${order.orderId}`,
       html,
+      // Embedded in the body via cid, so it renders without fetching anything.
       attachments: [{
-        filename: 'qrcode.png',
+        filename: 'pickup-qr.png',
         content: qrBuffer,
-        cid: 'qrcode',
+        contentType: 'image/png',
+        cid: QR_CID,
       }],
     }, `order confirmation #${order.orderId}`);
   },
@@ -375,7 +719,12 @@ export const emailService = {
           </div>
           <div class="qr-section">
             <p><strong>Show this QR code at the counter</strong></p>
-            <img src="cid:qrcode" alt="QR Code" width="200" height="200" />
+            <img src="${qrImageSrc() || qrImageUrl(order)}" alt="Pickup QR code" width="200" height="200" style="display:block;margin:0 auto;" />
+            <p style="margin-top:14px;">
+              <a href="${orderPageUrl(order)}" style="color:#ea580c;font-weight:600;text-decoration:none;">
+                Can't see the code? Open your order &rarr;
+              </a>
+            </p>
           </div>
           ${itemsTable(order)}
         </div>
@@ -387,10 +736,12 @@ export const emailService = {
       to: order.customerEmail,
       subject: `CloudKitchen - Order #${order.orderId} Ready for Pickup! 🎉`,
       html,
+      // Embedded in the body via cid, so it renders without fetching anything.
       attachments: [{
-        filename: 'qrcode.png',
+        filename: 'pickup-qr.png',
         content: qrBuffer,
-        cid: 'qrcode',
+        contentType: 'image/png',
+        cid: QR_CID,
       }],
     }, `ready notification #${order.orderId}`);
   },

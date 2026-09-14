@@ -1,12 +1,18 @@
 import { createClient } from '@supabase/supabase-js';
 import config from './index.js';
 
-const supabaseUrl = config.supabase.url || 'https://mfkoksauazfzwfxcmknd.supabase.co';
-const serviceRoleOrAnonKey = config.supabase.serviceRoleKey || config.supabase.anonKey || 'sb_publishable_cwyJBSbB7aVY_-kyE7_SFg_7JBgQH9D';
-const anonKey = config.supabase.anonKey || 'sb_publishable_cwyJBSbB7aVY_-kyE7_SFg_7JBgQH9D';
+// config already requires these, so no hardcoded fallbacks are needed here.
+const supabaseUrl = config.supabase.url;
+const anonKey = config.supabase.anonKey;
 
-// Server-side client with service role key (or fallback key)
-export const supabaseAdmin = createClient(supabaseUrl, serviceRoleOrAnonKey);
+// Storage writes need the service role key. Falling back to the anon key keeps
+// reads working, but uploads will fail until SUPABASE_SERVICE_ROLE_KEY is set.
+if (!config.supabase.serviceRoleKey) {
+  console.warn('SUPABASE_SERVICE_ROLE_KEY is not set: menu image uploads will fail.');
+}
+
+// Server-side client, ideally with the service role key
+export const supabaseAdmin = createClient(supabaseUrl, config.supabase.serviceRoleKey || anonKey);
 
 // Client for verifying user tokens
 export const supabaseAuth = createClient(supabaseUrl, anonKey);

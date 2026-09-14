@@ -306,6 +306,33 @@ export const orderController = {
     res.json({ success: true, data: order });
   },
 
+  // Public: render an order's QR as a PNG.
+  //
+  // Email clients cannot display inline cid: attachments consistently (Brevo's
+  // HTTP API has no cid support at all), so order emails point their <img> here.
+  // The token is the pickup secret, but anyone holding it already has the email
+  // that contains it; rendering it as an image leaks nothing further, and
+  // redeeming it still requires an authenticated admin.
+  async qrImage(req, res) {
+    const token = String(req.params.token || '').replace(/\.png$/i, '');
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return res.status(400).json({ success: false, message: 'Invalid QR token.' });
+    }
+
+    const order = await Order.findOne({ qrToken: token }).select('_id');
+    if (!order) return res.status(404).json({ success: false, message: 'Unknown QR token.' });
+
+    const buffer = await qrService.generateQrBuffer(token);
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Length': buffer.length,
+      // Safe to cache in the recipient's client; never in a shared proxy.
+      'Cache-Control': 'private, max-age=86400',
+      'X-Robots-Tag': 'noindex, nofollow',
+    });
+    res.send(buffer);
+  },
+
   // Admin: verify QR code
   async verifyQr(req, res) {
     const { qrToken } = req.body;

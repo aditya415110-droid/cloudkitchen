@@ -136,7 +136,7 @@ function Attempts({ attempts }) {
               a.ok ? 'bg-green-100 text-green-900' : 'bg-gray-900 text-gray-100'
             }`}
           >
-            port {a.port} ({a.secure ? 'TLS' : 'STARTTLS'}) · {a.ms}ms · {a.ok ? 'OK' : 'FAILED'}
+            {a.provider ? a.provider : `port ${a.port} (${a.secure ? 'TLS' : 'STARTTLS'})`} · {a.ms}ms · {a.ok ? 'OK' : 'FAILED'}
             {a.error ? `\n${a.error}` : ''}
             {a.response ? `\n${a.response}` : ''}
           </pre>
@@ -146,6 +146,21 @@ function Attempts({ attempts }) {
   );
 }
 
+/** Whether the active HTTP provider's credentials are present. */
+const hasKey = (provider, s) => ({
+  relay: s?.relaySecretSet,
+  mailjet: s?.mailjetKeySet,
+  brevo: s?.brevoKeySet,
+  resend: s?.resendKeySet,
+}[provider]) || false;
+
+const KEY_LABELS = {
+  relay: 'Relay secret',
+  mailjet: 'API key + secret',
+  brevo: 'API key',
+  resend: 'API key',
+};
+
 function StatusReport({ status }) {
   const s = status.settings;
 
@@ -154,9 +169,14 @@ function StatusReport({ status }) {
       <Banner
         ok={status.ok}
         title={status.ok
-          ? `SMTP reachable on port ${status.port}`
-          : status.reason === 'not_configured' ? 'SMTP is not configured' : 'SMTP is unreachable'}
+          ? (status.transport === 'https'
+              ? `Sending over the ${status.provider} HTTPS API`
+              : `SMTP reachable on port ${status.port}`)
+          : status.reason === 'not_configured' ? 'Email is not configured' : 'SMTP is unreachable'}
       >
+        {status.ok && status.message && (
+          <p className="text-sm text-green-800 mt-1">{status.message}</p>
+        )}
         {!status.ok && status.message && (
           <pre className="text-xs whitespace-pre-wrap break-words bg-gray-900 text-gray-100 rounded p-2 mt-2 font-mono">
             {status.message}
@@ -166,10 +186,33 @@ function StatusReport({ status }) {
 
       {s && (
         <dl className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-sm mt-4">
-          <Field label="Host" value={s.host || 'not set'} missing={!s.host} />
-          <Field label="Port" value={`${s.port}${s.secure ? ' (TLS)' : ' (STARTTLS)'}`} />
-          <Field label="User" value={s.user || 'not set'} missing={!s.user} />
-          <Field label="Password" value={s.passwordSet ? 'set' : 'not set'} missing={!s.passwordSet} />
+          <Field
+            label="Provider"
+            value={status.provider === 'smtp'
+              ? 'SMTP'
+              : status.provider === 'relay'
+                ? 'Supabase Edge relay (HTTPS)'
+                : `${status.provider} (HTTPS API)`}
+          />
+          {status.provider === 'smtp' ? (
+            <>
+              <Field label="Host" value={s.host || 'not set'} missing={!s.host} />
+              <Field label="Port" value={`${s.port}${s.secure ? ' (TLS)' : ' (STARTTLS)'}`} />
+              <Field label="User" value={s.user || 'not set'} missing={!s.user} />
+              <Field label="Password" value={s.passwordSet ? 'set' : 'not set'} missing={!s.passwordSet} />
+            </>
+          ) : (
+            <>
+              {status.provider === 'relay' && (
+                <Field label="Relay URL" value={s.relayUrl || 'not set'} missing={!s.relayUrl} />
+              )}
+              <Field
+                label={KEY_LABELS[status.provider] || 'API key'}
+                value={hasKey(status.provider, s) ? 'set' : 'not set'}
+                missing={!hasKey(status.provider, s)}
+              />
+            </>
+          )}
           <Field label="From" value={s.from} missing={/^["']|["']$/.test(s.from || '')} />
           <Field
             label="Admin alerts to"
@@ -177,6 +220,8 @@ function StatusReport({ status }) {
           />
         </dl>
       )}
+
+      {!status.ok && status.hint && <Hint>{status.hint}</Hint>}
 
       {s && /^["']|["']$/.test(s.from || '') && (
         <Hint>
@@ -194,7 +239,7 @@ function TestReport({ result }) {
       <Banner
         ok={result.ok}
         title={result.ok
-          ? `Test email sent to ${result.to}${result.usedFallback ? ` (via fallback port ${result.via?.port})` : ''}`
+          ? `Test email sent to ${result.to}${result.usedFallback ? ` (via fallback port ${result.via?.port})` : ''}${result.via?.provider ? ` via ${result.via.provider}` : ''}`
           : 'Test email failed'}
       >
         {result.ok

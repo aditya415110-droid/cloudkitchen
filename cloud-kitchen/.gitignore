@@ -1,11 +1,24 @@
+# Project-level ignores. The repo root .gitignore covers the common cases.
+
 node_modules/
 **/node_modules/
+
+# Secrets — .env.example is the tracked template and must stay committed.
 .env
+.env.*
 *.env
-server/.env
-client/.env
+!.env.example
+
 dist/
 **/dist/
 build/
+coverage/
+
 *.log
 .DS_Store
+Thumbs.db
+
+# Supabase CLI local state; config.toml and functions/ are tracked.
+supabase/.branches/
+supabase/.temp/
+supabase/.env

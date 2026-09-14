@@ -1,6 +1,6 @@
 import Settings from '../models/Settings.js';
 import { getOpenState, DAYS } from '../utils/openingHours.js';
-import { emailService, verifyEmailConnection, isEmailConfigured } from '../services/emailService.js';
+import { emailService, verifyEmailConnection, isEmailConfigured, activeProvider } from '../services/emailService.js';
 import config from '../config/index.js';
 
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -85,6 +85,7 @@ export const settingsController = {
       data: {
         ...result,
         configured: isEmailConfigured(),
+        provider: activeProvider(),
         // Never echo the password back, only whether it is present.
         settings: {
           host: config.email.host || null,
@@ -94,6 +95,11 @@ export const settingsController = {
           from: config.email.from,
           passwordSet: Boolean(config.email.password),
           adminEmails: config.email.adminEmails,
+          relayUrl: config.email.relayUrl || null,
+          relaySecretSet: Boolean(config.email.relaySecret),
+          mailjetKeySet: Boolean(config.email.mailjetApiKey && config.email.mailjetApiSecret),
+          brevoKeySet: Boolean(config.email.brevoApiKey),
+          resendKeySet: Boolean(config.email.resendApiKey),
         },
       },
     });

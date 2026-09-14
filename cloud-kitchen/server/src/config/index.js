@@ -21,20 +21,34 @@ const env = (key, fallback = undefined) => {
   return isQuoted ? trimmed.slice(1, -1) : trimmed;
 };
 
-const defaultUrl = 'https://mfkoksauazfzwfxcmknd.supabase.co';
-const defaultAnonKey = 'sb_publishable_cwyJBSbB7aVY_-kyE7_SFg_7JBgQH9D';
-const defaultMongoUri = 'mongodb+srv://aditya415110_db_user:Aditya9322@cluster0.1y3ikr1.mongodb.net/cloudkitchen?retryWrites=true&w=majority&appName=Cluster0';
+/**
+ * Required at startup. Fail loudly rather than falling back to a hardcoded
+ * value: a committed default is a credential in the git history, and it also
+ * lets a misconfigured deploy quietly write to the wrong database.
+ */
+const required = (key) => {
+  const value = env(key);
+  if (!value) {
+    throw new Error(
+      `${key} is not set. Define it in server/.env for local development, ` +
+      "or in the host's environment variables for a deployment."
+    );
+  }
+  return value;
+};
 
 const config = {
   port: env('PORT', 5000),
-  mongoUri: env('MONGODB_URI', defaultMongoUri),
+  mongoUri: required('MONGODB_URI'),
   supabase: {
-    url: env('SUPABASE_URL', defaultUrl),
-    anonKey: env('SUPABASE_ANON_KEY', defaultAnonKey),
-    serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') || env('SUPABASE_ANON_KEY') || defaultAnonKey,
+    url: required('SUPABASE_URL'),
+    // The anon key is publishable by design; it ships in the browser bundle.
+    anonKey: required('SUPABASE_ANON_KEY'),
+    // Never falls back to the anon key: storage writes would fail confusingly.
+    serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') || '',
   },
   jwt: {
-    secret: env('JWT_SECRET', 'change-this-in-production'),
+    secret: required('JWT_SECRET'),
     expiresIn: '7d',
   },
   email: {
@@ -50,6 +64,19 @@ const config = {
       .split(',')
       .map(e => e.trim())
       .filter(Boolean),
+
+    // Delivery mechanism: 'auto' picks an HTTP provider when its key is set and
+    // falls back to SMTP. Hosts that block outbound SMTP ports (Render's free
+    // tier blocks 25/465/587) can only deliver over HTTPS.
+    provider: env('EMAIL_PROVIDER', 'auto').toLowerCase(),
+    // Supabase Edge Function acting as an SMTP relay, for hosts that block
+    // outbound SMTP but allow HTTPS.
+    relayUrl: env('EMAIL_RELAY_URL'),
+    relaySecret: env('EMAIL_RELAY_SECRET'),
+    mailjetApiKey: env('MAILJET_API_KEY'),
+    mailjetApiSecret: env('MAILJET_API_SECRET'),
+    brevoApiKey: env('BREVO_API_KEY'),
+    resendApiKey: env('RESEND_API_KEY'),
   },
   clientUrl: env('CLIENT_URL', 'http://localhost:5173'),
   serverUrl: env('SERVER_URL', 'http://localhost:5000'),
