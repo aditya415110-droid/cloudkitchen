@@ -37,6 +37,19 @@ const required = (key) => {
   return value;
 };
 
+/**
+ * Treat an unreplaced template value as unset.
+ *
+ * A placeholder like YOUR_SUPABASE_SERVICE_ROLE_KEY is a non-empty string, so
+ * it gets used as a real credential and fails deep inside the client with
+ * something opaque ("Invalid Compact JWS") rather than at startup.
+ */
+const notPlaceholder = (value) => {
+  if (!value) return '';
+  const looksUnreplaced = /^(YOUR_|<|xxx+$|changeme$|replace)/i.test(value) || value.includes('_HERE');
+  return looksUnreplaced ? '' : value;
+};
+
 const config = {
   port: env('PORT', 5000),
   mongoUri: required('MONGODB_URI'),
@@ -44,8 +57,7 @@ const config = {
     url: required('SUPABASE_URL'),
     // The anon key is publishable by design; it ships in the browser bundle.
     anonKey: required('SUPABASE_ANON_KEY'),
-    // Never falls back to the anon key: storage writes would fail confusingly.
-    serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') || '',
+    serviceRoleKey: notPlaceholder(env('SUPABASE_SERVICE_ROLE_KEY')),
   },
   jwt: {
     // Unused: authentication is handled entirely by Supabase JWT verification

@@ -8,7 +8,10 @@ const anonKey = config.supabase.anonKey;
 // Storage writes need the service role key. Falling back to the anon key keeps
 // reads working, but uploads will fail until SUPABASE_SERVICE_ROLE_KEY is set.
 if (!config.supabase.serviceRoleKey) {
-  console.warn('SUPABASE_SERVICE_ROLE_KEY is not set: menu image uploads will fail.');
+  console.warn(
+    'SUPABASE_SERVICE_ROLE_KEY is not set (or is still a placeholder); using the anon key. ' +
+    'Storage writes work only if the bucket policy allows anonymous uploads.'
+  );
 }
 
 // Server-side client, ideally with the service role key

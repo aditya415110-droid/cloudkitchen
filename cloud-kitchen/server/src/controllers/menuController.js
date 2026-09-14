@@ -45,7 +45,12 @@ export const menuController = {
       res.status(201).json({ success: true, data: item });
     } catch (error) {
       console.error('Create menu item error:', error);
-      res.status(500).json({ success: false, message: 'Failed to create menu item.' });
+      // Surface the real reason: a generic message leaves the admin with no way
+      // to tell a storage rejection from a validation problem.
+      res.status(500).json({
+        success: false,
+        message: `Failed to create menu item: ${error.message}`,
+      });
     }
   },
 
@@ -86,7 +91,10 @@ export const menuController = {
       res.json({ success: true, data: item });
     } catch (error) {
       console.error('Update menu item error:', error);
-      res.status(500).json({ success: false, message: 'Failed to update menu item.' });
+      res.status(500).json({
+        success: false,
+        message: `Failed to update menu item: ${error.message}`,
+      });
     }
   },
 
