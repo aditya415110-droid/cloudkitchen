@@ -48,7 +48,10 @@ const config = {
     serviceRoleKey: env('SUPABASE_SERVICE_ROLE_KEY') || '',
   },
   jwt: {
-    secret: required('JWT_SECRET'),
+    // Unused: authentication is handled entirely by Supabase JWT verification
+    // in middleware/auth.js. Kept only so a future local-token feature has a
+    // home; not required, so it cannot block startup.
+    secret: env('JWT_SECRET', ''),
     expiresIn: '7d',
   },
   email: {
