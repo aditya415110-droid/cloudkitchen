@@ -104,13 +104,13 @@ export const settingsController = {
     const to = (req.body?.to || req.user.email || '').trim();
     if (!to) return res.status(400).json({ success: false, message: 'No recipient address available.' });
 
-    const sent = await emailService.sendTestEmail(to);
-    if (!sent) {
-      return res.status(502).json({
-        success: false,
-        message: 'The test email could not be sent. Check the server logs for the SMTP error.',
-      });
-    }
-    res.json({ success: true, message: `Test email sent to ${to}.` });
+    const result = await emailService.sendTestEmail(to);
+
+    // Always 200: the diagnostic succeeded in telling us what happened, even
+    // when the send itself failed. The payload carries the real outcome.
+    res.json({
+      success: true,
+      data: { ...result, to, sentAt: new Date().toISOString() },
+    });
   },
 };

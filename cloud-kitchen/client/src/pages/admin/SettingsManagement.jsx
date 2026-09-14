@@ -4,6 +4,7 @@ import { FiSave, FiMapPin, FiPhone, FiClock, FiCopy } from 'react-icons/fi';
 import { api } from '../../services/api';
 import { useSettings, DAY_ORDER, DAY_LABELS } from '../../context/SettingsContext';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import EmailDiagnostics from '../../components/admin/EmailDiagnostics';
 
 const TIMEZONES = [
   'Asia/Kolkata', 'Asia/Dubai', 'Asia/Singapore', 'Europe/London',
@@ -93,7 +94,8 @@ export default function SettingsManagement() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-3xl space-y-6 pb-10">
+    <div className="max-w-3xl space-y-6 pb-10">
+      <form onSubmit={handleSubmit} className="space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-bold">Restaurant Settings</h1>
         <button type="submit" disabled={saving} className="btn-primary flex items-center gap-2">
@@ -346,6 +348,11 @@ export default function SettingsManagement() {
       <button type="submit" disabled={saving} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
         <FiSave size={16} /> {saving ? 'Saving...' : 'Save Changes'}
       </button>
-    </form>
+      </form>
+
+      {/* Kept outside the settings form: these act immediately and have nothing
+          to save, and a nested input would submit the form on Enter. */}
+      <EmailDiagnostics />
+    </div>
   );
 }

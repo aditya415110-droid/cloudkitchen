@@ -90,6 +90,10 @@ export const api = {
   getSettings: () => request('/settings'),
   updateSettings: (body) => request('/settings/admin', { method: 'PATCH', body }),
 
+  // Email diagnostics (admin)
+  getEmailStatus: () => request('/settings/admin/email-status'),
+  sendTestEmail: (to) => request('/settings/admin/email-test', { method: 'POST', body: { to } }),
+
   // Reviews
   getItemReviews: (menuItemId) => request(`/menu/${menuItemId}/reviews`),
   reviewItem: (menuItemId, rating, comment) =>

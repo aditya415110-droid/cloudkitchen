@@ -81,54 +81,91 @@ export const verifyEmailConnection = async () => {
  * Without SMTP settings this reports the skip loudly and returns false, so the
  * caller never records an email as sent that in truth was never dispatched.
  */
-const deliver = async (message, label) => {
+/** Turn an SMTP error into a short, non-obvious-cause hint for the admin UI. */
+const explainError = (err) => {
+  if (err.code === 'EAUTH') {
+    return 'Gmail rejected the credentials. EMAIL_PASSWORD must be a current App Password (16 characters, no spaces), not the account password.';
+  }
+  if (err.responseCode === 550 || /blocked|spam/i.test(err.message || '')) {
+    return 'The mail server accepted the connection but refused the message. Check that EMAIL_FROM matches EMAIL_USER.';
+  }
+  if (isConnectionError(err)) {
+    return 'Could not reach the SMTP server. Most hosts that do this are blocking outbound SMTP; an HTTP email API (Resend, SendGrid) is the usual way around it.';
+  }
+  return 'See the attempt log below for the raw SMTP error.';
+};
+
+/**
+ * Send one message, reporting exactly what happened on each port attempted.
+ *
+ * Returns a result object rather than a boolean so the admin diagnostics screen
+ * can show the real SMTP error instead of "check the logs".
+ */
+const deliverDetailed = async (message, label) => {
+  const attempts = [];
+
   if (!isEmailConfigured()) {
     if (!warnedUnconfigured) {
       console.warn(
-        'EMAIL IS NOT CONFIGURED: set EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD in server/.env. ' +
+        'EMAIL IS NOT CONFIGURED: set EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD. ' +
         'No order emails will be delivered until then.'
       );
       warnedUnconfigured = true;
     }
     console.warn(`Skipped ${label} to ${message.to} (no SMTP configured).`);
-    return false;
+    return {
+      ok: false,
+      attempts,
+      error: 'SMTP is not configured.',
+      hint: 'Set EMAIL_HOST, EMAIL_USER and EMAIL_PASSWORD, then redeploy.',
+    };
   }
 
   const payload = { from: config.email.from, ...message };
+  const ports = [{ port: config.email.port, secure: config.email.secure }];
+  // A blocked port looks like a connection failure, so implicit TLS is worth a retry.
+  if (isFallbackAvailable()) ports.push({ port: FALLBACK_PORT, secure: true });
 
-  try {
-    await getTransporter().sendMail(payload);
-    console.log(`Sent ${label} to ${message.to}`);
-    return true;
-  } catch (err) {
-    const detail = `${err.code || 'ERROR'} ${err.message}`;
+  for (const [index, { port, secure }] of ports.entries()) {
+    const startedAt = Date.now();
+    try {
+      const info = await getTransporter(port, secure).sendMail(payload);
+      attempts.push({ port, secure, ok: true, ms: Date.now() - startedAt, response: info.response });
+      console.log(`Sent ${label} to ${message.to} via port ${port}.`);
 
-    // A blocked port looks like a connection failure, not a rejection, so it is
-    // worth one retry over implicit TLS before giving up.
-    if (isConnectionError(err) && isFallbackAvailable()) {
-      console.warn(`SMTP port ${config.email.port} unreachable (${detail}); retrying ${label} on ${FALLBACK_PORT}.`);
-      try {
-        await getTransporter(FALLBACK_PORT, true).sendMail(payload);
-        console.log(`Sent ${label} to ${message.to} via port ${FALLBACK_PORT}.`);
-        console.warn(`Set EMAIL_PORT=${FALLBACK_PORT} and EMAIL_SECURE=true to skip the failed attempt next time.`);
-        return true;
-      } catch (fallbackErr) {
-        console.error(
-          `Failed to send ${label} to ${message.to} on both ports. ` +
-          `${config.email.port}: ${detail}; ${FALLBACK_PORT}: ${fallbackErr.code || 'ERROR'} ${fallbackErr.message}. ` +
-          'If both time out, the host is blocking outbound SMTP - use an HTTP email API instead.'
-        );
-        return false;
+      if (index > 0) {
+        console.warn(`Set EMAIL_PORT=${port} and EMAIL_SECURE=${secure} to skip the failed attempt next time.`);
+      }
+      return {
+        ok: true,
+        attempts,
+        via: { port, secure },
+        messageId: info.messageId,
+        usedFallback: index > 0,
+      };
+    } catch (err) {
+      const detail = `${err.code || 'ERROR'} ${err.message}`;
+      attempts.push({ port, secure, ok: false, ms: Date.now() - startedAt, error: detail });
+      console.error(`Failed to send ${label} to ${message.to} on port ${port}: ${detail}`);
+
+      // Rejected credentials fail identically on every port, so stop here.
+      if (!isConnectionError(err)) {
+        return { ok: false, attempts, error: detail, hint: explainError(err) };
       }
     }
-
-    console.error(`Failed to send ${label} to ${message.to}: ${detail}`);
-    if (err.code === 'EAUTH') {
-      console.error('Gmail rejected the credentials. Check EMAIL_USER and that EMAIL_PASSWORD is a current App Password with no spaces.');
-    }
-    return false;
   }
+
+  const last = attempts[attempts.length - 1];
+  return {
+    ok: false,
+    attempts,
+    error: last?.error || 'All SMTP attempts failed.',
+    hint: 'Every port timed out, so this host is almost certainly blocking outbound SMTP. Use an HTTP email API instead.',
+  };
 };
+
+/** Boolean wrapper for the order emails, which only care whether it went out. */
+const deliver = async (message, label) => (await deliverDetailed(message, label)).ok;
 
 const formatCurrency = (amount) => `₹${amount.toFixed(2)}`;
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'TBD';
@@ -237,7 +274,7 @@ export const emailService = {
       </div>
     </body></html>`;
 
-    return deliver({ to, subject: 'CloudKitchen - SMTP test', html }, 'test email');
+    return deliverDetailed({ to, subject: 'CloudKitchen - SMTP test', html }, 'test email');
   },
 
   async sendOrderConfirmation(order) {
