@@ -28,6 +28,13 @@ const orderSchema = new mongoose.Schema({
   },
   customerEmail: { type: String, required: true },
   customerName: { type: String, required: true },
+  // Indian mobile: 10 digits starting 6-9. Stored bare, without the +91.
+  customerPhone: {
+    type: String,
+    required: true,
+    trim: true,
+    match: [/^[6-9]\d{9}$/, 'Enter a valid 10-digit Indian mobile number.'],
+  },
   items: {
     type: [orderItemSchema],
     required: true,

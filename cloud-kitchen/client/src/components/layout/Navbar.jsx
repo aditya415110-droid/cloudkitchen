@@ -18,7 +18,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2.5 font-bold text-xl text-brand-600 min-w-0">
-            <img src="/logo.png" alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+            <img src="/logo.png" alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0 transition-transform duration-300 hover:scale-110 hover:rotate-3" />
             <span className="flex flex-col leading-tight min-w-0">
               <span className="truncate">{settings.restaurantName}</span>
               <span
@@ -51,7 +51,10 @@ export default function Navbar() {
             <Link to="/cart" className="relative text-gray-700 hover:text-brand-600">
               <FiShoppingCart size={22} />
               {itemCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-brand-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                <span
+                  key={itemCount}
+                  className="absolute -top-2 -right-2 bg-brand-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold animate-pop"
+                >
                   {itemCount}
                 </span>
               )}
@@ -80,7 +83,10 @@ export default function Navbar() {
             <Link to="/cart" className="relative text-gray-700">
               <FiShoppingCart size={22} />
               {itemCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-brand-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                <span
+                  key={itemCount}
+                  className="absolute -top-2 -right-2 bg-brand-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold animate-pop"
+                >
                   {itemCount}
                 </span>
               )}

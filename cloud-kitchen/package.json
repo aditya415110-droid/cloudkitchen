@@ -1,7 +1,7 @@
 {
   "name": "cloud-kitchen",
   "version": "1.0.0",
-  "description": "CloudKitchen - Full-stack cloud kitchen food ordering platform",
+  "description": "LEBELL - Full-stack cloud kitchen food ordering platform",
   "scripts": {
     "install:all": "npm install --include=dev --prefix server && npm install --include=dev --prefix client",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",

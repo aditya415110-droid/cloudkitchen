@@ -12,10 +12,20 @@ export const orderController = {
   // Customer: place order
   async create(req, res) {
     try {
-      const { items, couponCode } = req.body; // items: [{menuItemId, quantity}]
+      const { items, couponCode, customerPhone } = req.body; // items: [{menuItemId, quantity}]
 
       if (!items || !Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ success: false, message: 'Order must contain at least one item.' });
+      }
+
+      // Validated here too: the client check is a convenience, not a guarantee.
+      // Accept +91 / 0 prefixes and spacing, but store the bare 10 digits.
+      const phone = String(customerPhone || '').replace(/[\s-]/g, '').replace(/^(\+91|0091|91|0)/, '');
+      if (!/^[6-9]\d{9}$/.test(phone)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.',
+        });
       }
 
       // Refuse orders outside the admin-configured opening hours.
@@ -77,6 +87,7 @@ export const orderController = {
         customerId: req.user._id,
         customerEmail: req.user.email,
         customerName: req.user.name,
+        customerPhone: phone,
         items: orderItems,
         subtotal,
         coupon: couponSnapshot,
@@ -93,14 +104,9 @@ export const orderController = {
       // Generate QR data URL for response
       const qrDataUrl = await qrService.generateQrDataUrl(order.qrToken);
 
-      // Notify the customer and the kitchen (non-blocking; a mail failure must
-      // never fail the order that was already written).
-      emailService.sendOrderConfirmation(order).then(sent => {
-        if (sent) {
-          Order.updateOne({ _id: order._id }, { 'emailsSent.confirmation': true }).exec();
-        }
-      }).catch(err => console.error('Order confirmation email error:', err.message));
-
+      // Email goes to the kitchen only. Customers follow their order in the app
+      // and get live status over the socket, so they are not mailed.
+      // Non-blocking: a mail failure must never fail an order already written.
       emailService.sendNewOrderAdminNotification(order).then(sent => {
         if (sent) {
           Order.updateOne({ _id: order._id }, { 'emailsSent.adminNewOrder': true }).exec();
@@ -181,14 +187,7 @@ export const orderController = {
 
     order.status = status;
 
-    // Send ready notification (only once)
-    if (status === 'READY_FOR_PICKUP' && !order.emailsSent.ready) {
-      emailService.sendOrderReadyNotification(order).then(sent => {
-        if (sent) {
-          Order.updateOne({ _id: order._id }, { 'emailsSent.ready': true }).exec();
-        }
-      });
-    }
+    // No customer email: the status change is pushed to them over the socket.
 
     if (status === 'COMPLETED') {
       order.completedAt = new Date();
@@ -258,13 +257,7 @@ export const orderController = {
       await Coupon.updateOne({ code: order.coupon.code, usedCount: { $gt: 0 } }, { $inc: { usedCount: -1 } });
     }
 
-    if (!order.emailsSent.cancellation) {
-      emailService.sendOrderCancellationNotification(order).then(sent => {
-        if (sent) {
-          Order.updateOne({ _id: order._id }, { 'emailsSent.cancellation': true }).exec();
-        }
-      });
-    }
+    // No customer email; the cancellation reaches them over the socket.
 
     await order.save();
 
@@ -304,33 +297,6 @@ export const orderController = {
     }
 
     res.json({ success: true, data: order });
-  },
-
-  // Public: render an order's QR as a PNG.
-  //
-  // Email clients cannot display inline cid: attachments consistently (Brevo's
-  // HTTP API has no cid support at all), so order emails point their <img> here.
-  // The token is the pickup secret, but anyone holding it already has the email
-  // that contains it; rendering it as an image leaks nothing further, and
-  // redeeming it still requires an authenticated admin.
-  async qrImage(req, res) {
-    const token = String(req.params.token || '').replace(/\.png$/i, '');
-    if (!/^[a-f0-9]{64}$/.test(token)) {
-      return res.status(400).json({ success: false, message: 'Invalid QR token.' });
-    }
-
-    const order = await Order.findOne({ qrToken: token }).select('_id');
-    if (!order) return res.status(404).json({ success: false, message: 'Unknown QR token.' });
-
-    const buffer = await qrService.generateQrBuffer(token);
-    res.set({
-      'Content-Type': 'image/png',
-      'Content-Length': buffer.length,
-      // Safe to cache in the recipient's client; never in a shared proxy.
-      'Cache-Control': 'private, max-age=86400',
-      'X-Robots-Tag': 'noindex, nofollow',
-    });
-    res.send(buffer);
   },
 
   // Admin: verify QR code

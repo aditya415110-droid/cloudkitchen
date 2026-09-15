@@ -90,6 +90,9 @@ export default function OrderManagement() {
                     <td className="px-4 py-3">
                       <p className="font-medium">{order.customerName}</p>
                       <p className="text-xs text-gray-500">{order.customerEmail}</p>
+                      {order.customerPhone && (
+                        <p className="text-xs text-gray-500">+91 {order.customerPhone}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3">{order.items.length} item{order.items.length > 1 ? 's' : ''}</td>
                     <td className="px-4 py-3 font-medium">₹{order.totalAmount.toFixed(2)}</td>

@@ -86,6 +86,14 @@ export default function AdminOrderDetail() {
           <h2 className="font-bold mb-3">Customer</h2>
           <p className="font-medium">{order.customerName}</p>
           <p className="text-sm text-gray-500">{order.customerEmail}</p>
+          {order.customerPhone && (
+            <a
+              href={`tel:+91${order.customerPhone}`}
+              className="text-sm text-brand-600 hover:text-brand-700 font-medium"
+            >
+              +91 {order.customerPhone}
+            </a>
+          )}
           <p className="text-xs text-gray-400 mt-2">Order placed: {new Date(order.createdAt).toLocaleString('en-IN')}</p>
         </div>
 

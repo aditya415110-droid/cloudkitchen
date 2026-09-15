@@ -5,7 +5,7 @@ dotenv.config();
  * Read an env var, stripping a wrapping pair of quotes.
  *
  * Dashboard UIs (Render, Railway) store values literally, so a value pasted as
- * `"CloudKitchen <me@gmail.com>"` keeps its quotes and produces an invalid
+ * `"LEBELL <me@gmail.com>"` keeps its quotes and produces an invalid
  * From header. dotenv strips them locally, which is why this only bites in
  * production.
  */
@@ -85,7 +85,7 @@ const config = {
     secure: env('EMAIL_SECURE') === 'true',
     user: env('EMAIL_USER'),
     password: env('EMAIL_PASSWORD'),
-    from: env('EMAIL_FROM', 'CloudKitchen <noreply@cloudkitchen.com>'),
+    from: env('EMAIL_FROM', 'LEBELL <noreply@lebell.com>'),
     // Comma-separated override for who receives new-order alerts. When unset,
     // alerts go to every user with the ADMIN role.
     adminEmails: env('ADMIN_EMAILS', '')

@@ -113,7 +113,7 @@ export default function SettingsManagement() {
             maxLength={100}
             value={form.restaurantName}
             onChange={e => setField('restaurantName', e.target.value)}
-            placeholder="CloudKitchen"
+            placeholder="LEBELL"
           />
           <p className="text-xs text-gray-500 mt-1">Shown in the navbar, footer, emails and the sign-in popup.</p>
         </div>

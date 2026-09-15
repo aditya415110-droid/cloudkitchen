@@ -78,7 +78,7 @@ export default function LoginModal() {
       aria-labelledby="login-modal-title"
     >
       <div
-        className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-7 relative text-center"
+        className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-7 relative text-center animate-scaleIn"
         onClick={e => e.stopPropagation()}
       >
         <button
@@ -89,7 +89,7 @@ export default function LoginModal() {
           <FiX size={20} />
         </button>
 
-        <img src="/logo.png" alt="" className="w-20 h-20 rounded-xl object-cover mx-auto mb-4 shadow-sm" />
+        <img src="/logo.png" alt="" className="w-20 h-20 rounded-xl object-cover mx-auto mb-4 shadow-sm animate-float" />
 
         <h2 id="login-modal-title" className="text-xl font-bold mb-1">
           Welcome to {settings.restaurantName}

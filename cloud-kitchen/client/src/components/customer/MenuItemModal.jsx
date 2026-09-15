@@ -31,7 +31,7 @@ export default function MenuItemModal({ item, onClose, onRatingChange }) {
       aria-label={item.name}
     >
       <div
-        className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto relative"
+        className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-y-auto relative animate-fadeUp sm:animate-scaleIn"
         onClick={e => e.stopPropagation()}
       >
         <button

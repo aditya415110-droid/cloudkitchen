@@ -8,7 +8,7 @@ export const useSettings = () => useContext(SettingsContext);
 
 /** Used until the API responds, and if the API is unreachable. */
 const FALLBACK = {
-  restaurantName: 'CloudKitchen',
+  restaurantName: 'LEBELL',
   tagline: 'Fresh Food, Fast Pickup',
   location: {},
   contact: {},

@@ -1,6 +1,5 @@
 import nodemailer from 'nodemailer';
 import config from '../config/index.js';
-import { qrService } from './qrService.js';
 import Settings from '../models/Settings.js';
 import User from '../models/User.js';
 
@@ -480,40 +479,16 @@ const normalizeHtml = (html) => String(html || '')
   .filter(line => line.length > 0)
   .join('\n');
 
-/**
- * Whether the active provider can render <img src="cid:..."> inline.
- * Brevo's API has no content-id support, so it falls back to the hosted URL.
- */
-const supportsInlineImages = () => activeProvider() !== 'brevo';
-
-/** Content id used for the embedded pickup QR. */
-const QR_CID = 'pickupqr';
-
-/**
- * Where the QR <img> should point.
- *
- * Embedding wins wherever it is supported: a hosted URL depends on the API
- * being awake and publicly reachable when the customer opens the mail, and on
- * free hosting that spins down when idle it frequently is not.
- */
-const qrImageSrc = () => (supportsInlineImages() ? `cid:${QR_CID}` : null);
-
-/** The customer's own order page, where the QR is always rendered in-app. */
-const orderPageUrl = (order) => `${config.clientUrl}/orders/${order._id}`;
-
-/** Absolute URL of an order's QR PNG, served by the API for email clients. */
-const qrImageUrl = (order) => `${config.serverUrl}/api/orders/qr/${order.qrToken}.png`;
-
 const formatCurrency = (amount) => `₹${amount.toFixed(2)}`;
 const formatDate = (date) => date ? new Date(date).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'TBD';
 
 const baseStyles = `
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }
   .container { max-width: 600px; margin: 0 auto; background: #fff; border-radius: 8px; overflow: hidden; }
-  .header { background: #f97316; color: #fff; padding: 24px; text-align: center; }
+  .header { background: #5b3bba; color: #fff; padding: 24px; text-align: center; }
   .header h1 { margin: 0; font-size: 24px; }
   .content { padding: 24px; }
-  .order-info { background: #fff7ed; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .order-info { background: #f5f2fc; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e5e7eb; }
   th { background: #f9fafb; font-weight: 600; }
@@ -542,22 +517,29 @@ const itemsTable = (order) => {
 };
 
 /** Restaurant name, address and phone for the email footer, from admin settings. */
-const footerHtml = async (closingLine) => {
-  let settings = null;
+const loadSettings = async () => {
   try {
-    settings = await Settings.getSettings();
+    return await Settings.getSettings();
   } catch (err) {
-    console.warn('Could not load restaurant settings for email footer:', err.message);
+    console.warn('Could not load restaurant settings for email:', err.message);
+    return null;
   }
+};
 
-  const name = settings?.restaurantName || 'CloudKitchen';
+/** The admin-configured restaurant name, for subjects and body copy. */
+const restaurantName = async () => (await loadSettings())?.restaurantName || 'LEBELL';
+
+const footerHtml = async (closingLine) => {
+  const settings = await loadSettings();
+
+  const name = settings?.restaurantName || 'LEBELL';
   const loc = settings?.location;
   const address = [loc?.addressLine1, loc?.addressLine2, loc?.city, loc?.state, loc?.postalCode]
     .filter(Boolean).join(', ');
   const phone = settings?.contact?.phone;
 
   return `<div class="footer">
-    <p>${closingLine.replace('CloudKitchen', name)}</p>
+    <p>${closingLine || name}</p>
     ${address ? `<p>${address}</p>` : ''}
     ${phone ? `<p>Call us: ${phone}</p>` : ''}
   </div>`;
@@ -594,11 +576,12 @@ const resolveAdminRecipients = async () => {
 export const emailService = {
   /** Plain deliverability check, used by the admin diagnostics endpoint. */
   async sendTestEmail(to) {
+    const name = await restaurantName();
     const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
       <div class="container">
         <div class="header"><h1>Email is working</h1></div>
         <div class="content">
-          <p>This is a test message from your CloudKitchen server.</p>
+          <p>This is a test message from your ${name} server.</p>
           <div class="order-info">
             <p><strong>Sent from:</strong> ${config.serverUrl}</p>
             <p><strong>Environment:</strong> ${config.nodeEnv}</p>
@@ -607,55 +590,11 @@ export const emailService = {
           </div>
           <p>Order confirmations and new-order alerts will be delivered from this address.</p>
         </div>
-        ${await footerHtml('CloudKitchen')}
+        ${await footerHtml()}
       </div>
     </body></html>`;
 
-    return deliverDetailed({ to, subject: 'CloudKitchen - SMTP test', html }, 'test email');
-  },
-
-  async sendOrderConfirmation(order) {
-    const qrBuffer = await qrService.generateQrBuffer(order.qrToken);
-
-    const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
-      <div class="container">
-        <div class="header"><h1>🍽️ CloudKitchen</h1><p>Order Confirmation</p></div>
-        <div class="content">
-          <p>Hi <strong>${order.customerName}</strong>,</p>
-          <p>Your order has been placed successfully!</p>
-          <div class="order-info">
-            <p><strong>Order ID:</strong> ${order.orderId}</p>
-            <p><strong>Status:</strong> <span class="status-badge" style="background:#dbeafe;color:#1d4ed8;">PLACED</span></p>
-            <p><strong>Estimated Pickup:</strong> ${formatDate(order.estimatedPickupTime)}</p>
-          </div>
-          ${itemsTable(order)}
-          <div class="qr-section">
-            <p><strong>Your Pickup QR Code</strong></p>
-            <p style="color:#6b7280;font-size:13px;">Show this at pickup</p>
-            <img src="${qrImageSrc() || qrImageUrl(order)}" alt="Pickup QR code" width="200" height="200" style="display:block;margin:0 auto;" />
-            <p style="margin-top:14px;">
-              <a href="${orderPageUrl(order)}" style="color:#ea580c;font-weight:600;text-decoration:none;">
-                Can't see the code? Open your order &rarr;
-              </a>
-            </p>
-          </div>
-        </div>
-        ${await footerHtml('Thank you for ordering from CloudKitchen!')}
-      </div>
-    </body></html>`;
-
-    return deliver({
-      to: order.customerEmail,
-      subject: `CloudKitchen - Order Confirmed #${order.orderId}`,
-      html,
-      // Embedded in the body via cid, so it renders without fetching anything.
-      attachments: [{
-        filename: 'pickup-qr.png',
-        content: qrBuffer,
-        contentType: 'image/png',
-        cid: QR_CID,
-      }],
-    }, `order confirmation #${order.orderId}`);
+    return deliverDetailed({ to, subject: `${name} - SMTP test`, html }, 'test email');
   },
 
   /**
@@ -664,6 +603,7 @@ export const emailService = {
    */
   async sendNewOrderAdminNotification(order) {
     const recipients = await resolveAdminRecipients();
+    const name = await restaurantName();
     if (recipients.length === 0) {
       console.warn(`No admin recipients configured; skipping alert for order ${order.orderId}.`);
       return false;
@@ -673,24 +613,25 @@ export const emailService = {
 
     const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
       <div class="container">
-        <div class="header" style="background:#111827;"><h1>New Order Received</h1><p>#${order.orderId}</p></div>
+        <div class="header" style="background:#111827;"><h1>${name} &mdash; New Order</h1><p>#${order.orderId}</p></div>
         <div class="content">
           <div class="order-info">
             <p><strong>Order ID:</strong> ${order.orderId}</p>
             <p><strong>Customer:</strong> ${order.customerName}</p>
             <p><strong>Email:</strong> <a href="mailto:${order.customerEmail}">${order.customerEmail}</a></p>
+            ${order.customerPhone ? `<p><strong>Phone:</strong> <a href="tel:+91${order.customerPhone}">+91 ${order.customerPhone}</a></p>` : ''}
             <p><strong>Placed:</strong> ${formatDate(order.createdAt || new Date())}</p>
             <p><strong>Estimated Pickup:</strong> ${formatDate(order.estimatedPickupTime)}</p>
           </div>
           ${itemsTable(order)}
           <p style="text-align:center;margin:24px 0;">
             <a href="${adminOrderUrl}"
-               style="background:#f97316;color:#fff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:8px;display:inline-block;">
+               style="background:#5b3bba;color:#fff;text-decoration:none;font-weight:600;padding:12px 24px;border-radius:8px;display:inline-block;">
               Open in Admin Panel
             </a>
           </p>
         </div>
-        ${await footerHtml('CloudKitchen')}
+        ${await footerHtml()}
       </div>
     </body></html>`;
 
@@ -701,73 +642,5 @@ export const emailService = {
       subject: `New Order #${order.orderId} - ${formatCurrency(order.totalAmount)} - ${order.customerName}`,
       html,
     }, `admin alert for #${order.orderId}`);
-  },
-
-  async sendOrderReadyNotification(order) {
-    const qrBuffer = await qrService.generateQrBuffer(order.qrToken);
-
-    const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
-      <div class="container">
-        <div class="header" style="background:#16a34a;"><h1>🍽️ CloudKitchen</h1><p>Your Order is Ready!</p></div>
-        <div class="content">
-          <p>Hi <strong>${order.customerName}</strong>,</p>
-          <p>Great news! Your order <strong>#${order.orderId}</strong> is ready for pickup!</p>
-          <div class="order-info" style="background:#f0fdf4;">
-            <p><strong>Order ID:</strong> ${order.orderId}</p>
-            <p><strong>Status:</strong> <span class="status-badge" style="background:#bbf7d0;color:#15803d;">READY FOR PICKUP</span></p>
-            <p><strong>Pickup Time:</strong> ${formatDate(order.estimatedPickupTime)}</p>
-          </div>
-          <div class="qr-section">
-            <p><strong>Show this QR code at the counter</strong></p>
-            <img src="${qrImageSrc() || qrImageUrl(order)}" alt="Pickup QR code" width="200" height="200" style="display:block;margin:0 auto;" />
-            <p style="margin-top:14px;">
-              <a href="${orderPageUrl(order)}" style="color:#ea580c;font-weight:600;text-decoration:none;">
-                Can't see the code? Open your order &rarr;
-              </a>
-            </p>
-          </div>
-          ${itemsTable(order)}
-        </div>
-        ${await footerHtml('Thank you for ordering from CloudKitchen!')}
-      </div>
-    </body></html>`;
-
-    return deliver({
-      to: order.customerEmail,
-      subject: `CloudKitchen - Order #${order.orderId} Ready for Pickup! 🎉`,
-      html,
-      // Embedded in the body via cid, so it renders without fetching anything.
-      attachments: [{
-        filename: 'pickup-qr.png',
-        content: qrBuffer,
-        contentType: 'image/png',
-        cid: QR_CID,
-      }],
-    }, `ready notification #${order.orderId}`);
-  },
-
-  async sendOrderCancellationNotification(order) {
-    const html = `<!DOCTYPE html><html><head><style>${baseStyles}</style></head><body>
-      <div class="container">
-        <div class="header" style="background:#dc2626;"><h1>🍽️ CloudKitchen</h1><p>Order Cancelled</p></div>
-        <div class="content">
-          <p>Hi <strong>${order.customerName}</strong>,</p>
-          <p>We're sorry, but your order <strong>#${order.orderId}</strong> has been cancelled.</p>
-          <div class="order-info" style="background:#fef2f2;">
-            <p><strong>Order ID:</strong> ${order.orderId}</p>
-            <p><strong>Status:</strong> <span class="status-badge" style="background:#fecaca;color:#b91c1c;">CANCELLED</span></p>
-          </div>
-          ${itemsTable(order)}
-          <p>If you have questions, please contact us.</p>
-        </div>
-        ${await footerHtml('CloudKitchen')}
-      </div>
-    </body></html>`;
-
-    return deliver({
-      to: order.customerEmail,
-      subject: `CloudKitchen - Order #${order.orderId} Cancelled`,
-      html,
-    }, `cancellation notice #${order.orderId}`);
   },
 };

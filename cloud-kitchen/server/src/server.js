@@ -125,7 +125,7 @@ app.use('/api/reviews', reviewRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ success: true, message: 'CloudKitchen API is running.' });
+  res.json({ success: true, message: 'LEBELL API is running.' });
 });
 
 // Serve frontend static files in production
@@ -146,7 +146,7 @@ app.use(errorHandler);
 const start = async () => {
   await connectDB();
   httpServer.listen(config.port, () => {
-    console.log(`CloudKitchen server running on port ${config.port}`);
+    console.log(`LEBELL server running on port ${config.port}`);
   });
 
   // Report SMTP reachability at boot so a mail problem shows up in the logs

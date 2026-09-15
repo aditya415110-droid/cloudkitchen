@@ -69,8 +69,8 @@ export const api = {
   deleteMenuItem: (id) => request(`/menu/admin/${id}`, { method: 'DELETE' }),
 
   // Orders (customer)
-  createOrder: (items, couponCode = null) =>
-    request('/orders', { method: 'POST', body: { items, couponCode } }),
+  createOrder: (items, couponCode = null, customerPhone = null) =>
+    request('/orders', { method: 'POST', body: { items, couponCode, customerPhone } }),
   getMyOrders: () => request('/orders/my-orders'),
   getOrder: (id) => request(`/orders/${id}`),
 

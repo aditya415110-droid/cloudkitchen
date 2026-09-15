@@ -38,10 +38,14 @@ export default function Home() {
       {/* Hero */}
       <section className="bg-gradient-to-br from-brand-500 to-brand-700 text-white">
         <div className="max-w-7xl mx-auto px-4 py-20 md:py-28 text-center">
-          <img src="/logo.png" alt="" className="w-24 h-24 rounded-2xl object-cover mx-auto mb-6 shadow-lg ring-4 ring-white/20" />
+          <img
+            src="/logo.png"
+            alt=""
+            className="w-24 h-24 rounded-2xl object-cover mx-auto mb-6 shadow-lg ring-4 ring-white/20 animate-float"
+          />
 
           <span
-            className={`inline-flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full mb-5 ${
+            className={`inline-flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full mb-5 animate-scaleIn ${
               openState?.isOpen ? 'bg-green-400/20 text-green-50' : 'bg-red-900/30 text-red-50'
             }`}
           >
@@ -51,8 +55,12 @@ export default function Home() {
               : (openState?.reason || 'Currently closed')}
           </span>
 
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">{settings.restaurantName}</h1>
-          <p className="text-lg md:text-xl text-brand-100 mb-4 max-w-2xl mx-auto">{settings.tagline}</p>
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 animate-fadeUp [animation-delay:80ms]">
+            {settings.restaurantName}
+          </h1>
+          <p className="text-lg md:text-xl text-brand-100 mb-4 max-w-2xl mx-auto animate-fadeUp [animation-delay:160ms]">
+            {settings.tagline}
+          </p>
 
           {rating.count > 0 && (
             <Link to="/reviews" className="inline-flex items-center gap-2 mb-6 hover:opacity-90">
@@ -61,7 +69,7 @@ export default function Home() {
             </Link>
           )}
 
-          <div className="flex flex-wrap items-center justify-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-3 animate-fadeUp [animation-delay:240ms]">
             <Link to="/menu" className="inline-block bg-white text-brand-600 font-bold py-3 px-8 rounded-full text-lg hover:bg-brand-50 transition">
               Browse Menu
             </Link>
@@ -84,7 +92,7 @@ export default function Home() {
             <FiTag className="text-brand-500" /> Today's Offers
           </h2>
           <p className="text-gray-600 mb-6 text-sm">Tap a code to copy it, then apply it in your cart.</p>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
             {coupons.map(coupon => <CouponCard key={coupon._id} coupon={coupon} />)}
           </div>
         </section>
@@ -92,10 +100,10 @@ export default function Home() {
 
       {/* Features */}
       <section className="max-w-7xl mx-auto px-4 py-16">
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-3 gap-8 stagger">
           {features.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="card p-6 text-center">
-              <div className="w-14 h-14 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div key={title} className="card card-interactive p-6 text-center group">
+              <div className="w-14 h-14 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                 <Icon size={28} className="text-brand-600" />
               </div>
               <h3 className="font-bold text-lg mb-2">{title}</h3>
@@ -198,7 +206,7 @@ function CouponCard({ coupon }) {
   return (
     <button
       onClick={copy}
-      className="card p-5 text-left border-dashed border-2 border-brand-200 hover:border-brand-400 hover:shadow-md transition w-full"
+      className="card card-interactive p-5 text-left border-dashed border-2 border-brand-200 hover:border-brand-400 w-full"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">

@@ -4,7 +4,8 @@ import { api } from '../../services/api';
 import { getSocket } from '../../services/socket';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { FiCheck, FiCircle } from 'react-icons/fi';
+import { FiCheck, FiCircle, FiMapPin, FiPhone, FiExternalLink } from 'react-icons/fi';
+import { useSettings, formatAddress, mapsLink } from '../../context/SettingsContext';
 
 const STEPS = ['PLACED', 'CONFIRMED', 'PREPARING', 'READY_FOR_PICKUP', 'COMPLETED'];
 const STEP_LABELS = { PLACED: 'Order Placed', CONFIRMED: 'Confirmed', PREPARING: 'Preparing', READY_FOR_PICKUP: 'Ready for Pickup', COMPLETED: 'Completed' };
@@ -13,6 +14,11 @@ export default function OrderDetail() {
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const { settings } = useSettings();
+
+  const contact = settings.contact || {};
+  const pickupAddress = formatAddress(settings.location);
+  const pickupMaps = mapsLink(settings.location);
 
   useEffect(() => {
     api.getOrder(id)
@@ -92,11 +98,48 @@ export default function OrderDetail() {
       </div>
 
       {/* QR Code */}
+      {/* Where to collect it, straight from the admin settings. */}
+      {!['CANCELLED'].includes(order.status) && (pickupAddress || contact.phone) && (
+        <div className="card p-6 mb-6">
+          <h2 className="font-bold text-lg mb-3">Pickup From</h2>
+          <p className="font-medium mb-2">{settings.restaurantName}</p>
+
+          {pickupAddress && (
+            <div className="flex gap-2.5 text-sm mb-3">
+              <FiMapPin className="text-brand-500 flex-shrink-0 mt-0.5" size={16} />
+              <div>
+                <p className="text-gray-700">{pickupAddress}</p>
+                {pickupMaps && (
+                  <a
+                    href={pickupMaps}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-brand-600 hover:text-brand-700 font-medium mt-1"
+                  >
+                    Get directions <FiExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
+          {contact.phone && (
+            <div className="flex gap-2.5 text-sm items-center">
+              <FiPhone className="text-brand-500 flex-shrink-0" size={16} />
+              <a href={`tel:${contact.phone}`} className="text-brand-600 hover:text-brand-700 font-medium">
+                {contact.phone}
+              </a>
+              <span className="text-gray-500">— call us about this order</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {order.qrDataUrl && !['CANCELLED', 'COMPLETED'].includes(order.status) && (
         <div className="card p-6 mb-6 text-center">
           <h2 className="font-bold text-lg mb-2">Pickup QR Code</h2>
           <p className="text-sm text-gray-500 mb-4">Show this at the counter</p>
-          <img src={order.qrDataUrl} alt="QR Code" className="mx-auto w-48 h-48" />
+          <img src={order.qrDataUrl} alt="QR Code" className="mx-auto w-48 h-48 animate-scaleIn" />
         </div>
       )}
 

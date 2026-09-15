@@ -27,11 +27,11 @@ export default function Cart() {
         <button onClick={clearCart} className="text-sm text-red-500 hover:text-red-700 font-medium">Clear All</button>
       </div>
 
-      <div className="space-y-4 mb-8">
+      <div className="space-y-4 mb-8 stagger">
         {items.map(item => (
           <div key={item.menuItemId} className="card p-4 flex gap-4">
             {item.image ? (
-              <img src={item.image} alt={item.name} className="w-20 h-20 rounded-lg object-cover" />
+              <img src={item.image} alt={item.name} className="w-20 h-20 rounded-lg object-cover transition-transform duration-300 hover:scale-105" />
             ) : (
               <div className="w-20 h-20 rounded-lg bg-gray-100 flex items-center justify-center text-2xl">🍽️</div>
             )}
@@ -46,14 +46,14 @@ export default function Cart() {
               <div className="flex items-center gap-3 mt-2">
                 <button
                   onClick={() => updateQuantity(item.menuItemId, item.quantity - 1)}
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-all duration-150 active:scale-90"
                 >
                   <FiMinus size={14} />
                 </button>
                 <span className="font-semibold w-8 text-center">{item.quantity}</span>
                 <button
                   onClick={() => updateQuantity(item.menuItemId, item.quantity + 1)}
-                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                  className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-all duration-150 active:scale-90"
                 >
                   <FiPlus size={14} />
                 </button>

@@ -101,7 +101,10 @@ export default function ReviewSection({ menuItemId = null, onAverageChange }) {
                 <div key={star} className="flex items-center gap-2 text-xs text-gray-500">
                   <span className="w-3">{star}</span>
                   <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                    <div className="h-full bg-amber-400" style={{ width: `${pct}%` }} />
+                    <div
+                    className="h-full bg-amber-400 transition-[width] duration-700 ease-out"
+                    style={{ width: `${pct}%` }}
+                  />
                   </div>
                   <span className="w-6 text-right">{n}</span>
                 </div>
@@ -145,7 +148,7 @@ export default function ReviewSection({ menuItemId = null, onAverageChange }) {
       )}
 
       {/* Review list */}
-      <div className="border-t pt-4 space-y-4">
+      <div className="border-t pt-4 space-y-4 stagger">
         {loading ? (
           <p className="text-sm text-gray-400">Loading reviews...</p>
         ) : reviews.length === 0 ? (

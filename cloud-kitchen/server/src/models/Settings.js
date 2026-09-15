@@ -24,7 +24,7 @@ const settingsSchema = new mongoose.Schema({
   // Singleton guard: only one settings document may ever exist.
   key: { type: String, default: 'default', unique: true, immutable: true },
 
-  restaurantName: { type: String, default: 'CloudKitchen', trim: true, maxlength: 100 },
+  restaurantName: { type: String, default: 'LEBELL', trim: true, maxlength: 100 },
   tagline: { type: String, default: 'Fresh Food, Fast Pickup', trim: true, maxlength: 200 },
 
   location: {

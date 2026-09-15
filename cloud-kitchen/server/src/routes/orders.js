@@ -4,9 +4,6 @@ import { orderController } from '../controllers/orderController.js';
 
 const router = Router();
 
-// Public: QR image for order emails (the token itself is the credential)
-router.get('/qr/:token', orderController.qrImage);
-
 // Customer routes
 router.post('/', authenticate, orderController.create);
 router.get('/my-orders', authenticate, orderController.getMyOrders);

@@ -78,7 +78,7 @@ export default function Menu() {
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition ${
+            className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 active:scale-95 ${
               selectedCategory === cat
                 ? 'bg-brand-500 text-white'
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
@@ -94,9 +94,9 @@ export default function Menu() {
           <p className="text-lg">No items available in this category.</p>
         </div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 stagger">
           {filtered.map(item => (
-            <div key={item._id} className="card group flex flex-col">
+            <div key={item._id} className="card card-interactive zoom-parent group flex flex-col">
               {/* Image carousel */}
               <div className="aspect-[4/3] bg-gray-100 overflow-hidden relative">
                 {item.images?.length > 0 ? (
@@ -113,7 +113,9 @@ export default function Menu() {
               <div className="p-4 flex flex-col flex-1">
                 <div className="flex items-start justify-between mb-1 gap-2">
                   <h3 className="font-bold text-lg">{item.name}</h3>
-                  <span className="font-bold text-brand-600 text-lg whitespace-nowrap">₹{item.price}</span>
+                  <span className="font-bold text-brand-600 text-lg whitespace-nowrap transition-transform duration-200 group-hover:scale-110">
+                    ₹{item.price}
+                  </span>
                 </div>
                 <p className="text-sm text-gray-500 mb-1">{item.category}</p>
                 <p className="text-sm text-gray-600 mb-2 line-clamp-2">{item.description}</p>

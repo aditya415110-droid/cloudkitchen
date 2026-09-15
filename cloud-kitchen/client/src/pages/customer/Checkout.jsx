@@ -13,7 +13,14 @@ export default function Checkout() {
   const { settings } = useSettings();
   const isOpen = settings.openState?.isOpen !== false;
   const [loading, setLoading] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [phoneTouched, setPhoneTouched] = useState(false);
   const navigate = useNavigate();
+
+  // Indian mobile: 10 digits starting 6-9. Accept a +91 / 0 prefix and spacing
+  // when typing, but send the bare 10 digits.
+  const normalisedPhone = phone.replace(/[\s-]/g, '').replace(/^(\+91|0091|91|0)/, '');
+  const phoneIsValid = /^[6-9]\d{9}$/.test(normalisedPhone);
 
   if (items.length === 0) {
     return (
@@ -25,13 +32,19 @@ export default function Checkout() {
   }
 
   const handlePlaceOrder = async () => {
+    if (!phoneIsValid) {
+      setPhoneTouched(true);
+      toast.error('Enter a valid 10-digit mobile number so we can reach you about this order.');
+      return;
+    }
+
     setLoading(true);
     try {
       const orderItems = items.map(i => ({
         menuItemId: i.menuItemId,
         quantity: i.quantity,
       }));
-      const { data } = await api.createOrder(orderItems, coupon?.code || null);
+      const { data } = await api.createOrder(orderItems, coupon?.code || null, normalisedPhone);
       clearCart();
       toast.success('Order placed successfully!');
       navigate(`/orders/${data._id}`);
@@ -52,6 +65,41 @@ export default function Checkout() {
         <div className="space-y-2 text-sm">
           <p><span className="text-gray-500">Name:</span> <span className="font-medium">{user.name}</span></p>
           <p><span className="text-gray-500">Email:</span> <span className="font-medium">{user.email}</span></p>
+        </div>
+
+        <div className="mt-4">
+          <label htmlFor="phone" className="block text-sm font-medium mb-1">
+            Mobile number <span className="text-red-500">*</span>
+          </label>
+          <div className="flex">
+            <span className="inline-flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 bg-gray-50 text-gray-600 text-sm">
+              +91
+            </span>
+            <input
+              id="phone"
+              type="tel"
+              inputMode="numeric"
+              autoComplete="tel"
+              className={`input rounded-l-none ${
+                phoneTouched && !phoneIsValid ? 'border-red-400 focus:ring-red-400' : ''
+              }`}
+              placeholder="98765 43210"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              onBlur={() => setPhoneTouched(true)}
+              aria-invalid={phoneTouched && !phoneIsValid}
+              aria-describedby="phone-help"
+              maxLength={18}
+            />
+          </div>
+          <p
+            id="phone-help"
+            className={`text-xs mt-1 ${phoneTouched && !phoneIsValid ? 'text-red-600' : 'text-gray-500'}`}
+          >
+            {phoneTouched && !phoneIsValid
+              ? 'Enter a 10-digit Indian mobile number starting with 6, 7, 8 or 9.'
+              : 'We will call this number if there is a problem with your order or for confirmation.'}
+          </p>
         </div>
       </div>
 
@@ -116,13 +164,13 @@ export default function Checkout() {
 
       <button
         onClick={handlePlaceOrder}
-        disabled={loading || !isOpen}
+        disabled={loading || !isOpen || !phoneIsValid}
         className="btn-primary w-full py-3 text-lg"
       >
         {loading ? 'Placing Order...' : (isOpen ? 'Place Order' : 'Kitchen Closed')}
       </button>
       <p className="text-xs text-gray-500 mt-3 text-center">
-        A confirmation email with your pickup QR code will be sent to {user.email}
+        Your pickup QR code will be on your order page, under My Orders.
       </p>
     </div>
   );

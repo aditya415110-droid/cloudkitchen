@@ -11,16 +11,5 @@ export const qrService = {
       width: 300,
       margin: 2,
     });
-  },
-
-  /**
-   * Generate QR code as a Buffer for email embedding.
-   */
-  async generateQrBuffer(qrToken) {
-    return QRCode.toBuffer(qrToken, {
-      errorCorrectionLevel: 'M',
-      width: 300,
-      margin: 2,
-    });
-  },
+  }
 };
