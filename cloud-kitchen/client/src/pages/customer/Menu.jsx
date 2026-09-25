@@ -7,7 +7,25 @@ import { FiPlus, FiCheck, FiSearch } from 'react-icons/fi';
 import StarRating from '../../components/common/StarRating';
 import MenuItemModal from '../../components/customer/MenuItemModal';
 import AddOnStepper from '../../components/common/AddOnStepper';
-import { ChefHatIcon, CutleryIcon } from '../../components/common/FoodGraphics';
+import {
+  ChefHatIcon, CutleryIcon, FoodPattern, FoodDivider,
+  BurgerIcon, PizzaIcon, NoodlesIcon, DrinkIcon, CupcakeIcon, ChiliIcon, BowlIcon, CoffeeIcon,
+} from '../../components/common/FoodGraphics';
+
+/** A per-category illustration, so the filter row is not just text. */
+const CATEGORY_ICONS = [
+  [/burger|sandwich|roll|wrap/i, BurgerIcon],
+  [/pizza/i, PizzaIcon],
+  [/noodle|pasta|chow|hakka/i, NoodlesIcon],
+  [/drink|beverage|juice|shake|cola|soda/i, DrinkIcon],
+  [/coffee|tea|chai/i, CoffeeIcon],
+  [/dessert|sweet|cake|ice/i, CupcakeIcon],
+  [/spicy|snack|starter|chaat/i, ChiliIcon],
+  [/rice|bowl|curry|meal|thali|main/i, BowlIcon],
+];
+
+const iconForCategory = (name) =>
+  (CATEGORY_ICONS.find(([pattern]) => pattern.test(name)) || [null, CutleryIcon])[1];
 
 export default function Menu() {
   const [items, setItems] = useState([]);
@@ -55,7 +73,14 @@ export default function Menu() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-6">Our Menu</h1>
+      {/* Header banner */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 text-white px-6 py-8 mb-8">
+        <FoodPattern className="text-white" />
+        <div className="relative">
+          <h1 className="text-3xl font-bold">Our Menu</h1>
+          <p className="text-brand-100 mt-1">Freshly made, ready when you are.</p>
+        </div>
+      </div>
 
       {/* Search and sort */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
@@ -88,6 +113,7 @@ export default function Menu() {
                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
+            {(() => { const Icon = iconForCategory(cat); return <Icon size={16} className="inline-block mr-1.5 -mt-0.5" />; })()}
             {cat}
           </button>
         ))}
@@ -165,6 +191,8 @@ export default function Menu() {
           ))}
         </div>
       )}
+
+      {filtered.length > 0 && <FoodDivider className="mt-14" />}
 
       {activeItem && (
         <MenuItemModal

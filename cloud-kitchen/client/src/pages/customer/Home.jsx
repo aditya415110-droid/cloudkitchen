@@ -6,7 +6,10 @@ import { api } from '../../services/api';
 import { useSettings, formatAddress, mapsLink, formatTime } from '../../context/SettingsContext';
 import { describeCoupon } from '../../components/common/CouponInput';
 import StarRating from '../../components/common/StarRating';
-import { FoodPattern, BurgerIcon, PizzaIcon, CoffeeIcon } from '../../components/common/FoodGraphics';
+import {
+  FoodPattern, FoodDivider, SparkleIcon,
+  BurgerIcon, NoodlesIcon, CupcakeIcon, DrinkIcon, ChefHatIcon,
+} from '../../components/common/FoodGraphics';
 
 const features = [
   { icon: FiClock, title: 'Fast Pickup', desc: 'Order online, pick up in minutes' },
@@ -92,6 +95,7 @@ export default function Home() {
         <section className="max-w-7xl mx-auto px-4 pt-14">
           <h2 className="text-2xl font-bold mb-1 flex items-center gap-2">
             <FiTag className="text-brand-500" /> Today's Offers
+            <SparkleIcon size={18} className="text-amber-400 animate-pop" />
           </h2>
           <p className="text-gray-600 mb-6 text-sm">Tap a code to copy it, then apply it in your cart.</p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 stagger">
@@ -102,14 +106,11 @@ export default function Home() {
 
       {/* Features */}
       <section className="max-w-7xl mx-auto px-4 py-16">
-        <div className="flex justify-center gap-10 mb-12 text-brand-300">
-          <BurgerIcon size={44} className="animate-float" />
-          <PizzaIcon size={44} className="animate-float [animation-delay:400ms]" />
-          <CoffeeIcon size={44} className="animate-float [animation-delay:800ms]" />
-        </div>
+        <FoodDivider className="mb-12" />
         <div className="grid md:grid-cols-3 gap-8 stagger">
           {features.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="card card-interactive p-6 text-center group">
+            <div key={title} className="card card-interactive p-6 text-center group relative overflow-hidden">
+              <DecorIcon title={title} />
               <div className="w-14 h-14 bg-brand-100 rounded-full flex items-center justify-center mx-auto mb-4 transition-transform duration-300 group-hover:scale-110 group-hover:rotate-6">
                 <Icon size={28} className="text-brand-600" />
               </div>
@@ -123,7 +124,8 @@ export default function Home() {
       {/* Find us */}
       {(address || contact.phone) && (
         <section className="max-w-7xl mx-auto px-4 pb-16">
-          <div className="card p-6 md:p-8 grid md:grid-cols-2 gap-6">
+          <div className="card p-6 md:p-8 grid md:grid-cols-2 gap-6 relative overflow-hidden">
+            <NoodlesIcon size={130} className="absolute -right-6 -bottom-6 text-brand-100 rotate-12 pointer-events-none" />
             {address && (
               <div className="flex gap-3">
                 <FiMapPin size={22} className="text-brand-500 flex-shrink-0 mt-1" />
@@ -158,8 +160,10 @@ export default function Home() {
       )}
 
       {/* CTA */}
-      <section className="bg-gray-900 text-white py-16">
-        <div className="max-w-7xl mx-auto px-4 text-center">
+      <section className="bg-gray-900 text-white py-16 relative overflow-hidden">
+        <FoodPattern className="text-white" />
+        <div className="max-w-7xl mx-auto px-4 text-center relative">
+          <ChefHatIcon size={56} className="mx-auto mb-5 text-brand-400 animate-float" />
           <h2 className="text-3xl font-bold mb-4">Ready to order?</h2>
           <p className="text-gray-400 mb-8">Check out our menu and place your first order today.</p>
           <div className="flex flex-wrap gap-3 justify-center">
@@ -171,6 +175,18 @@ export default function Home() {
         </div>
       </section>
     </div>
+  );
+}
+
+/** A faint food shape in the corner of each feature card. */
+function DecorIcon({ title }) {
+  const Icon = /pickup/i.test(title) ? BurgerIcon : /qr/i.test(title) ? DrinkIcon : CupcakeIcon;
+  return (
+    <Icon
+      size={90}
+      className="absolute -right-4 -bottom-4 text-brand-50 pointer-events-none
+        transition-transform duration-500 group-hover:scale-110 group-hover:-rotate-6"
+    />
   );
 }
 
