@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import { useSettings, formatAddress } from '../../context/SettingsContext';
 import CouponInput from '../../components/common/CouponInput';
 import toast from 'react-hot-toast';
+import { normalisePhone, isValidPhone } from '../../utils/phone';
 
 export default function Checkout() {
   const { user } = useAuth();
@@ -17,10 +18,8 @@ export default function Checkout() {
   const [phoneTouched, setPhoneTouched] = useState(false);
   const navigate = useNavigate();
 
-  // Indian mobile: 10 digits starting 6-9. Accept a +91 / 0 prefix and spacing
-  // when typing, but send the bare 10 digits.
-  const normalisedPhone = phone.replace(/[\s-]/g, '').replace(/^(\+91|0091|91|0)/, '');
-  const phoneIsValid = /^[6-9]\d{9}$/.test(normalisedPhone);
+  const normalisedPhone = normalisePhone(phone);
+  const phoneIsValid = isValidPhone(phone);
 
   if (items.length === 0) {
     return (
@@ -43,6 +42,9 @@ export default function Checkout() {
       const orderItems = items.map(i => ({
         menuItemId: i.menuItemId,
         quantity: i.quantity,
+        addOns: (i.addOns || [])
+          .filter(a => a.quantity > 0)
+          .map(a => ({ addOnId: a.addOnId, quantity: a.quantity })),
       }));
       const { data } = await api.createOrder(orderItems, coupon?.code || null, normalisedPhone);
       clearCart();
@@ -112,8 +114,15 @@ export default function Checkout() {
               <div>
                 <p className="font-medium">{item.name}</p>
                 <p className="text-sm text-gray-500">Qty: {item.quantity} × ₹{item.price}</p>
+                {(item.addOns || []).filter(a => a.quantity > 0).map(a => (
+                  <p key={a.addOnId} className="text-sm text-brand-600">
+                    + {a.quantity} × {a.label} (₹{a.price} each)
+                  </p>
+                ))}
               </div>
-              <p className="font-semibold">₹{(item.price * item.quantity).toFixed(2)}</p>
+              <p className="font-semibold">
+                ₹{(item.price * item.quantity + (item.addOns || []).reduce((t, a) => t + a.price * (a.quantity || 0), 0)).toFixed(2)}
+              </p>
             </div>
           ))}
         </div>

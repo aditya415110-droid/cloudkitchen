@@ -1,13 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { FiX, FiPlus } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 import StarRating from '../common/StarRating';
+import AddOnStepper from '../common/AddOnStepper';
+import { CutleryIcon } from '../common/FoodGraphics';
 import ReviewSection from '../common/ReviewSection';
 import { useCart } from '../../context/CartContext';
 
 /** Full detail view for one menu item: images, description, and its reviews. */
 export default function MenuItemModal({ item, onClose, onRatingChange }) {
   const { addItem } = useCart();
+  const [addOnQty, setAddOnQty] = useState({});
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -49,7 +52,9 @@ export default function MenuItemModal({ item, onClose, onRatingChange }) {
             ))}
           </div>
         ) : (
-          <div className="h-40 bg-gray-100 flex items-center justify-center text-5xl">🍽️</div>
+          <div className="h-40 bg-brand-50 flex items-center justify-center">
+            <CutleryIcon size={56} className="text-brand-200" />
+          </div>
         )}
 
         <div className="p-5 space-y-4">
@@ -66,8 +71,20 @@ export default function MenuItemModal({ item, onClose, onRatingChange }) {
 
           <p className="text-gray-700 whitespace-pre-line">{item.description}</p>
 
+          {item.addOns?.some(a => a.enabled) && (
+            <AddOnStepper
+              addOns={item.addOns}
+              quantities={addOnQty}
+              onChange={(addOnId, q) => setAddOnQty(prev => ({ ...prev, [addOnId]: q }))}
+            />
+          )}
+
           <button
-            onClick={() => { addItem(item); toast.success(`${item.name} added to cart`); }}
+            onClick={() => {
+              addItem(item, addOnQty);
+              toast.success(`${item.name} added to cart`);
+              setAddOnQty({});
+            }}
             className="btn-primary w-full py-3 flex items-center justify-center gap-2"
           >
             <FiPlus /> Add to Cart

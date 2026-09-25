@@ -19,6 +19,7 @@ router.get('/admin/all', authenticate, requireAdmin, menuController.adminGetAll)
 router.post('/admin', authenticate, requireAdmin, uploadImages.array('images', 3), menuController.create);
 router.patch('/admin/:id', authenticate, requireAdmin, uploadImages.array('images', 3), menuController.update);
 router.patch('/admin/:id/status', authenticate, requireAdmin, menuController.updateStatus);
+router.patch("/admin/:id/addons/:addOnId", authenticate, requireAdmin, menuController.updateAddOn);
 router.delete('/admin/:id', authenticate, requireAdmin, menuController.delete);
 
 export default router;

@@ -25,6 +25,17 @@ export default function MenuManagement() {
     }
   };
 
+  /** Flip one extra on or off without opening the edit form. */
+  const toggleAddOn = async (item, addOn) => {
+    try {
+      await api.updateMenuItemAddOn(item._id, addOn._id, !addOn.enabled);
+      toast.success(`${addOn.label} ${!addOn.enabled ? 'enabled' : 'disabled'} for ${item.name}`);
+      fetchItems();
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
   const deleteItem = async (item) => {
     if (!confirm(`Delete "${item.name}"? This will soft-delete the item.`)) return;
     try {
@@ -80,6 +91,25 @@ export default function MenuManagement() {
                     >
                       {item.isAvailable ? <><FiToggleRight size={20} /> Available</> : <><FiToggleLeft size={20} /> Unavailable</>}
                     </button>
+
+                    {item.addOns?.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1.5">
+                        {item.addOns.map(addOn => (
+                          <button
+                            key={addOn._id}
+                            onClick={() => toggleAddOn(item, addOn)}
+                            title={`₹${addOn.price} each · max ${addOn.maxQuantity}`}
+                            className={`text-[11px] font-medium px-2 py-0.5 rounded-full border transition-colors ${
+                              addOn.enabled
+                                ? 'bg-brand-50 text-brand-700 border-brand-200'
+                                : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
+                            }`}
+                          >
+                            {addOn.label} ₹{addOn.price}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">

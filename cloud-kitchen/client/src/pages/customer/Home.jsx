@@ -6,6 +6,7 @@ import { api } from '../../services/api';
 import { useSettings, formatAddress, mapsLink, formatTime } from '../../context/SettingsContext';
 import { describeCoupon } from '../../components/common/CouponInput';
 import StarRating from '../../components/common/StarRating';
+import { FoodPattern, BurgerIcon, PizzaIcon, CoffeeIcon } from '../../components/common/FoodGraphics';
 
 const features = [
   { icon: FiClock, title: 'Fast Pickup', desc: 'Order online, pick up in minutes' },
@@ -36,8 +37,9 @@ export default function Home() {
       {coupons.length > 0 && <OfferBanner coupons={coupons} />}
 
       {/* Hero */}
-      <section className="bg-gradient-to-br from-brand-500 to-brand-700 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-20 md:py-28 text-center">
+      <section className="bg-gradient-to-br from-brand-500 to-brand-700 text-white relative overflow-hidden">
+        <FoodPattern className="text-white" />
+        <div className="max-w-7xl mx-auto px-4 py-20 md:py-28 text-center relative">
           <img
             src="/logo.png"
             alt=""
@@ -100,6 +102,11 @@ export default function Home() {
 
       {/* Features */}
       <section className="max-w-7xl mx-auto px-4 py-16">
+        <div className="flex justify-center gap-10 mb-12 text-brand-300">
+          <BurgerIcon size={44} className="animate-float" />
+          <PizzaIcon size={44} className="animate-float [animation-delay:400ms]" />
+          <CoffeeIcon size={44} className="animate-float [animation-delay:800ms]" />
+        </div>
         <div className="grid md:grid-cols-3 gap-8 stagger">
           {features.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="card card-interactive p-6 text-center group">

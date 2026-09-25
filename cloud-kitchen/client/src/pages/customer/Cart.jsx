@@ -1,18 +1,23 @@
 import { Link } from 'react-router-dom';
-import { FiTrash2, FiMinus, FiPlus, FiShoppingBag } from 'react-icons/fi';
+import { FiTrash2, FiMinus, FiPlus } from 'react-icons/fi';
+import { CutleryIcon } from '../../components/common/FoodGraphics';
 import { useCart } from '../../context/CartContext';
 import { useSettings } from '../../context/SettingsContext';
 import CouponInput from '../../components/common/CouponInput';
+import AddOnStepper from '../../components/common/AddOnStepper';
 
 export default function Cart() {
-  const { items, removeItem, updateQuantity, clearCart, subtotal, discount, total, coupon } = useCart();
+  const {
+    items, removeItem, updateQuantity, updateAddOnQuantity,
+    clearCart, subtotal, discount, total, coupon,
+  } = useCart();
   const { settings } = useSettings();
   const isOpen = settings.openState?.isOpen !== false;
 
   if (items.length === 0) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-20 text-center">
-        <FiShoppingBag size={48} className="mx-auto text-gray-300 mb-4" />
+        <CutleryIcon size={72} className="mx-auto text-brand-200 mb-4 animate-float" />
         <h2 className="text-xl font-bold mb-2">Your cart is empty</h2>
         <p className="text-gray-500 mb-6">Browse our menu and add some delicious items!</p>
         <Link to="/menu" className="btn-primary">Browse Menu</Link>
@@ -57,8 +62,21 @@ export default function Cart() {
                 >
                   <FiPlus size={14} />
                 </button>
-                <span className="ml-auto font-bold">₹{(item.price * item.quantity).toFixed(2)}</span>
+                <span className="ml-auto font-bold">
+                  ₹{(item.price * item.quantity + (item.addOns || []).reduce((t, a) => t + a.price * (a.quantity || 0), 0)).toFixed(2)}
+                </span>
               </div>
+
+              {item.addOns?.length > 0 && (
+                <div className="mt-3">
+                  <AddOnStepper
+                    addOns={item.addOns}
+                    quantities={Object.fromEntries((item.addOns || []).map(a => [a.addOnId, a.quantity]))}
+                    onChange={(addOnId, q) => updateAddOnQuantity(item.menuItemId, addOnId, q)}
+                    size="sm"
+                  />
+                </div>
+              )}
             </div>
           </div>
         ))}

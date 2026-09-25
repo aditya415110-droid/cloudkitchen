@@ -1,13 +1,10 @@
 /**
- * Indian mobile validation, mirrored on the client and enforced on the server.
- * The client check is a convenience; these rules are what actually guard the DB.
+ * Indian mobile validation, shared by the client and enforced on the server.
  */
+import { normalisePhone, isValidPhone } from '../src/utils/phone.js';
 
-/** Strip spacing and any +91 / 91 / 0 prefix, leaving the bare subscriber number. */
-const normalise = (value) =>
-  String(value || '').replace(/[\s-]/g, '').replace(/^(\+91|0091|91|0)/, '');
-
-const isValid = (value) => /^[6-9]\d{9}$/.test(normalise(value));
+const normalise = normalisePhone;
+const isValid = isValidPhone;
 
 describe('Indian mobile normalisation', () => {
   test('a bare 10-digit number is unchanged', () => {
@@ -64,5 +61,31 @@ describe('Indian mobile validation', () => {
   test('normalisation cannot turn an invalid number valid', () => {
     // Stripping the leading 0 leaves 876543210 - nine digits, still invalid.
     expect(isValid('0876543210')).toBe(false);
+  });
+});
+
+describe('regression: numbers that themselves start with 91', () => {
+  test('a real 10-digit number beginning 91 is accepted untouched', () => {
+    // Previously the leading "91" was stripped, leaving 8 digits, and the
+    // number was rejected. Users worked around it by typing 91 twice.
+    expect(normalise('9123423498')).toBe('9123423498');
+    expect(isValid('9123423498')).toBe(true);
+  });
+
+  test('the same number with a country code still resolves to it', () => {
+    expect(normalise('919123423498')).toBe('9123423498');
+    expect(normalise('+91 91234 23498')).toBe('9123423498');
+    expect(normalise('09123423498')).toBe('9123423498');
+  });
+
+  test('a doubled country code is not accepted', () => {
+    expect(isValid('91919123423498')).toBe(false);
+  });
+
+  test('every 10-digit number starting 91 round-trips unchanged', () => {
+    for (const n of ['9100000000', '9123423498', '9199999999']) {
+      expect(normalise(n)).toBe(n);
+      expect(isValid(n)).toBe(true);
+    }
   });
 });

@@ -66,9 +66,12 @@ export const api = {
   createMenuItem: (formData) => request('/menu/admin', { method: 'POST', body: formData, formData: true }),
   updateMenuItem: (id, formData) => request(`/menu/admin/${id}`, { method: 'PATCH', body: formData, formData: true }),
   updateMenuItemStatus: (id, isAvailable) => request(`/menu/admin/${id}/status`, { method: 'PATCH', body: { isAvailable } }),
+  updateMenuItemAddOn: (id, addOnId, enabled) =>
+    request(`/menu/admin/${id}/addons/${addOnId}`, { method: 'PATCH', body: { enabled } }),
   deleteMenuItem: (id) => request(`/menu/admin/${id}`, { method: 'DELETE' }),
 
   // Orders (customer)
+  // items: [{ menuItemId, quantity, addOns: [{ addOnId, quantity }] }]
   createOrder: (items, couponCode = null, customerPhone = null) =>
     request('/orders', { method: 'POST', body: { items, couponCode, customerPhone } }),
   getMyOrders: () => request('/orders/my-orders'),

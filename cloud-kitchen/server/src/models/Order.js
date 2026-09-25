@@ -11,6 +11,13 @@ const orderItemSchema = new mongoose.Schema({
   name: { type: String, required: true },       // snapshot
   price: { type: Number, required: true },       // snapshot
   quantity: { type: Number, required: true, min: 1 },
+  // Snapshot of the chosen extras, so later price or label edits never rewrite
+  // what the customer actually ordered.
+  addOns: [{
+    label: { type: String, required: true },
+    price: { type: Number, required: true, min: 0 },
+    quantity: { type: Number, required: true, min: 1 },
+  }],
 }, { _id: false });
 
 const orderSchema = new mongoose.Schema({

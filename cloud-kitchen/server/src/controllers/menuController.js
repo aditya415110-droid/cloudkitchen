@@ -1,6 +1,35 @@
 import MenuItem from '../models/MenuItem.js';
 import { storageService } from '../services/storageService.js';
 
+/**
+ * Read the add-on list from a multipart form body.
+ *
+ * The form sends it as a JSON string because multipart cannot carry nested
+ * arrays. Returns null when the field is absent, so a partial update leaves
+ * existing extras alone rather than wiping them.
+ */
+const parseAddOns = (body) => {
+  if (body.addOns === undefined) return null;
+
+  let parsed;
+  try {
+    parsed = typeof body.addOns === 'string' ? JSON.parse(body.addOns) : body.addOns;
+  } catch {
+    throw new Error('addOns must be valid JSON.');
+  }
+  if (!Array.isArray(parsed)) throw new Error('addOns must be a list.');
+
+  return parsed
+    .map(a => ({
+      label: String(a.label ?? '').trim().slice(0, 60),
+      price: Math.max(0, parseFloat(a.price) || 0),
+      maxQuantity: Math.min(20, Math.max(1, parseInt(a.maxQuantity, 10) || 5)),
+      enabled: a.enabled === undefined ? true : Boolean(a.enabled),
+    }))
+    // A nameless extra is a half-filled row, not something to save.
+    .filter(a => a.label.length > 0);
+};
+
 export const menuController = {
   // Public: get all available menu items
   async getAll(req, res) {
@@ -31,6 +60,7 @@ export const menuController = {
         category,
         price: parseFloat(price),
         images: [],
+        addOns: parseAddOns(req.body) || [],
       });
 
       // Upload images if provided
@@ -65,6 +95,9 @@ export const menuController = {
       if (description) item.description = description;
       if (category) item.category = category;
       if (price !== undefined) item.price = parseFloat(price);
+
+      const addOns = parseAddOns(req.body);
+      if (addOns) item.addOns = addOns;
 
       // Remove specified images
       if (removeImages) {
@@ -104,6 +137,19 @@ export const menuController = {
     if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' });
 
     item.isAvailable = req.body.isAvailable;
+    await item.save();
+    res.json({ success: true, data: item });
+  },
+
+  // Admin: flip one extra on or off after the item already exists
+  async updateAddOn(req, res) {
+    const item = await MenuItem.findById(req.params.id);
+    if (!item) return res.status(404).json({ success: false, message: 'Menu item not found.' });
+
+    const addOn = item.addOns.id(req.params.addOnId);
+    if (!addOn) return res.status(404).json({ success: false, message: 'Add-on not found on this item.' });
+
+    addOn.enabled = Boolean(req.body.enabled);
     await item.save();
     res.json({ success: true, data: item });
   },

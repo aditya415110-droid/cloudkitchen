@@ -24,8 +24,12 @@ export function CartProvider({ children }) {
   const [couponError, setCouponError] = useState('');
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
+  /** Item price times quantity, plus every paid extra chosen on that line. */
+  const lineTotal = (i) =>
+    i.price * i.quantity + (i.addOns || []).reduce((sum, a) => sum + a.price * (a.quantity || 0), 0);
+
   const subtotal = useMemo(
-    () => Math.round(items.reduce((sum, i) => sum + i.price * i.quantity, 0) * 100) / 100,
+    () => Math.round(items.reduce((sum, i) => sum + lineTotal(i), 0) * 100) / 100,
     [items]
   );
 
@@ -37,13 +41,33 @@ export function CartProvider({ children }) {
     }
   }, [items]);
 
-  const addItem = useCallback((menuItem) => {
+  const addItem = useCallback((menuItem, addOnQuantities = {}) => {
+    // Snapshot the offered extras so the cart can price and cap them without
+    // refetching. Disabled ones are dropped at the point of adding.
+    const offered = (menuItem.addOns || [])
+      .filter(a => a.enabled)
+      .map(a => ({
+        addOnId: a._id,
+        label: a.label,
+        price: a.price,
+        maxQuantity: a.maxQuantity,
+        quantity: Math.min(Math.max(0, addOnQuantities[a._id] || 0), a.maxQuantity),
+      }));
+
     setItems(prev => {
       const existing = prev.find(i => i.menuItemId === menuItem._id);
       if (existing) {
-        return prev.map(i =>
-          i.menuItemId === menuItem._id ? { ...i, quantity: i.quantity + 1 } : i
-        );
+        return prev.map(i => {
+          if (i.menuItemId !== menuItem._id) return i;
+          // Merge the newly chosen extras into whatever the line already had.
+          const merged = (i.addOns || []).map(a => {
+            const added = offered.find(o => o.addOnId === a.addOnId);
+            return added
+              ? { ...a, quantity: Math.min(a.quantity + added.quantity, a.maxQuantity) }
+              : a;
+          });
+          return { ...i, quantity: i.quantity + 1, addOns: merged };
+        });
       }
       return [...prev, {
         menuItemId: menuItem._id,
@@ -51,8 +75,24 @@ export function CartProvider({ children }) {
         price: menuItem.price,
         image: menuItem.images?.[0]?.url,
         quantity: 1,
+        addOns: offered,
       }];
     });
+  }, []);
+
+  /** Change how many of one extra are on a cart line. */
+  const updateAddOnQuantity = useCallback((menuItemId, addOnId, quantity) => {
+    setItems(prev => prev.map(i => {
+      if (i.menuItemId !== menuItemId) return i;
+      return {
+        ...i,
+        addOns: (i.addOns || []).map(a =>
+          a.addOnId === addOnId
+            ? { ...a, quantity: Math.min(Math.max(0, quantity), a.maxQuantity || 0) }
+            : a
+        ),
+      };
+    }));
   }, []);
 
   const removeItem = useCallback((menuItemId) => {
@@ -131,7 +171,7 @@ export function CartProvider({ children }) {
 
   return (
     <CartContext.Provider value={{
-      items, addItem, removeItem, updateQuantity, clearCart,
+      items, addItem, removeItem, updateQuantity, updateAddOnQuantity, clearCart,
       subtotal, discount, total, itemCount,
       coupon, couponError, validatingCoupon, applyCoupon, removeCoupon,
     }}>

@@ -49,7 +49,7 @@ describe('Coupon liveness', () => {
   });
 
   test('an inactive coupon is not live', () => {
-    expect(makeCoupon({ isActive: false }).isLive(now)).toBe(false);
+    expect(makeCoupon({ startsAt: hours(-1), isActive: false }).isLive(now)).toBe(false);
   });
 
   test('a coupon that has not started is not live', () => {
@@ -68,13 +68,15 @@ describe('Coupon liveness', () => {
     expect(makeCoupon({ startsAt: hours(-1), expiresAt: null }).isLive(now)).toBe(true);
   });
 
+  // startsAt is pinned relative to `now` rather than left to default to the
+  // real clock, or these break once the wall date passes the fixed `now`.
   test('a coupon at its usage limit is not live', () => {
-    expect(makeCoupon({ usageLimit: 5, usedCount: 5 }).isLive(now)).toBe(false);
-    expect(makeCoupon({ usageLimit: 5, usedCount: 4 }).isLive(now)).toBe(true);
+    expect(makeCoupon({ startsAt: hours(-1), usageLimit: 5, usedCount: 5 }).isLive(now)).toBe(false);
+    expect(makeCoupon({ startsAt: hours(-1), usageLimit: 5, usedCount: 4 }).isLive(now)).toBe(true);
   });
 
   test('usageLimit of 0 means unlimited', () => {
-    expect(makeCoupon({ usageLimit: 0, usedCount: 9999 }).isLive(now)).toBe(true);
+    expect(makeCoupon({ startsAt: hours(-1), usageLimit: 0, usedCount: 9999 }).isLive(now)).toBe(true);
   });
 });
 

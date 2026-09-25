@@ -7,6 +7,7 @@ import Settings from '../models/Settings.js';
 import Coupon from '../models/Coupon.js';
 import { resolveCoupon } from './couponController.js';
 import { getOpenState } from '../utils/openingHours.js';
+import { normalisePhone, isValidPhone } from '../utils/phone.js';
 
 export const orderController = {
   // Customer: place order
@@ -19,9 +20,8 @@ export const orderController = {
       }
 
       // Validated here too: the client check is a convenience, not a guarantee.
-      // Accept +91 / 0 prefixes and spacing, but store the bare 10 digits.
-      const phone = String(customerPhone || '').replace(/[\s-]/g, '').replace(/^(\+91|0091|91|0)/, '');
-      if (!/^[6-9]\d{9}$/.test(phone)) {
+      const phone = normalisePhone(customerPhone);
+      if (!isValidPhone(customerPhone)) {
         return res.status(400).json({
           success: false,
           message: 'Enter a valid 10-digit Indian mobile number starting with 6, 7, 8 or 9.',
@@ -51,15 +51,36 @@ export const orderController = {
       // Build order items with server-side prices
       const orderItems = items.map(item => {
         const menuItem = menuMap.get(item.menuItemId);
+        const quantity = Math.max(1, Math.floor(item.quantity));
+
+        // Extras are priced from the DB and clamped here. The client sends only
+        // which add-on and how many, never a label or a price.
+        const requested = Array.isArray(item.addOns) ? item.addOns : [];
+        const chosen = requested
+          .map(({ addOnId, quantity: wanted }) => {
+            const offered = menuItem.addOns?.id?.(addOnId);
+            if (!offered || !offered.enabled) return null;
+
+            const n = Math.min(
+              Math.max(0, Math.floor(Number(wanted) || 0)),
+              offered.maxQuantity || 0
+            );
+            return n > 0 ? { label: offered.label, price: offered.price, quantity: n } : null;
+          })
+          .filter(Boolean);
+
         return {
           menuItemId: menuItem._id,
           name: menuItem.name,        // snapshot
           price: menuItem.price,      // snapshot from DB, NOT from client
-          quantity: Math.max(1, Math.floor(item.quantity)),
+          quantity,
+          addOns: chosen,
         };
       });
 
-      const subtotal = Math.round(orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0) * 100) / 100;
+      const lineTotal = (i) =>
+        i.price * i.quantity + (i.addOns || []).reduce((sum, a) => sum + a.price * a.quantity, 0);
+      const subtotal = Math.round(orderItems.reduce((sum, i) => sum + lineTotal(i), 0) * 100) / 100;
 
       // Re-validate the coupon server-side; the client's quoted discount is never trusted.
       let discountAmount = 0;

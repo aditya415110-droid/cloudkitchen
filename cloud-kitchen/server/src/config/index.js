@@ -63,6 +63,15 @@ const validSupabaseKey = (value, label) => {
   return '';
 };
 
+/**
+ * Drop any trailing slash from a base URL.
+ *
+ * These are concatenated as `${base}/path`, so a value pasted with a trailing
+ * slash produces a double slash in links - which is how the "//admin/orders"
+ * in the order emails happened.
+ */
+const baseUrl = (value) => String(value || '').replace(/\/+$/, '');
+
 const config = {
   port: env('PORT', 5000),
   mongoUri: required('MONGODB_URI'),
@@ -106,8 +115,8 @@ const config = {
     brevoApiKey: env('BREVO_API_KEY'),
     resendApiKey: env('RESEND_API_KEY'),
   },
-  clientUrl: env('CLIENT_URL', 'http://localhost:5173'),
-  serverUrl: env('SERVER_URL', 'http://localhost:5000'),
+  clientUrl: baseUrl(env('CLIENT_URL', 'http://localhost:5173')),
+  serverUrl: baseUrl(env('SERVER_URL', 'http://localhost:5000')),
   nodeEnv: env('NODE_ENV', 'development'),
 };
 

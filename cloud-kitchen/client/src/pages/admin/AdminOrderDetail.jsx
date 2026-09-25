@@ -143,8 +143,15 @@ export default function AdminOrderDetail() {
               <div>
                 <p className="font-medium">{item.name}</p>
                 <p className="text-sm text-gray-500">Qty: {item.quantity} × ₹{item.price}</p>
+                {(item.addOns || []).map((a, k) => (
+                  <p key={k} className="text-sm text-brand-600">
+                    + {a.quantity} × {a.label} (₹{a.price} each)
+                  </p>
+                ))}
               </div>
-              <p className="font-semibold">₹{(item.price * item.quantity).toFixed(2)}</p>
+              <p className="font-semibold">
+                ₹{(item.price * item.quantity + (item.addOns || []).reduce((t, a) => t + a.price * a.quantity, 0)).toFixed(2)}
+              </p>
             </div>
           ))}
         </div>

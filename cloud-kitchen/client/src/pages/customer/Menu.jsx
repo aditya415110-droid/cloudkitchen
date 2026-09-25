@@ -6,6 +6,8 @@ import toast from 'react-hot-toast';
 import { FiPlus, FiCheck, FiSearch } from 'react-icons/fi';
 import StarRating from '../../components/common/StarRating';
 import MenuItemModal from '../../components/customer/MenuItemModal';
+import AddOnStepper from '../../components/common/AddOnStepper';
+import { ChefHatIcon, CutleryIcon } from '../../components/common/FoodGraphics';
 
 export default function Menu() {
   const [items, setItems] = useState([]);
@@ -14,6 +16,8 @@ export default function Menu() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('default');
   const [activeItem, setActiveItem] = useState(null);
+  // Extras selected on the card, keyed by item id, before it is added.
+  const [addOnQty, setAddOnQty] = useState({});
   const { addItem, items: cartItems } = useCart();
 
   // Keep the grid in sync when a review is left inside the detail modal.
@@ -91,6 +95,7 @@ export default function Menu() {
 
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-500">
+          <ChefHatIcon size={72} className="mx-auto text-brand-200 mb-4 animate-float" />
           <p className="text-lg">No items available in this category.</p>
         </div>
       ) : (
@@ -102,7 +107,9 @@ export default function Menu() {
                 {item.images?.length > 0 ? (
                   <ImageCarousel images={item.images} />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 text-4xl">🍽️</div>
+                  <div className="w-full h-full flex items-center justify-center bg-brand-50">
+                    <CutleryIcon size={48} className="text-brand-200" />
+                  </div>
                 )}
                 {item.reviewCount > 0 && (
                   <span className="absolute top-2 left-2 bg-white/95 rounded-full px-2 py-1 shadow-sm">
@@ -126,8 +133,25 @@ export default function Menu() {
                   View details &amp; reviews →
                 </button>
                 <div className="mt-auto" />
+                {item.addOns?.some(a => a.enabled) && (
+                  <div className="mb-3">
+                    <AddOnStepper
+                      addOns={item.addOns}
+                      quantities={addOnQty[item._id] || {}}
+                      onChange={(addOnId, q) => setAddOnQty(prev => ({
+                        ...prev,
+                        [item._id]: { ...(prev[item._id] || {}), [addOnId]: q },
+                      }))}
+                      size="sm"
+                    />
+                  </div>
+                )}
                 <button
-                  onClick={() => { addItem(item); toast.success(`${item.name} added to cart`); }}
+                  onClick={() => {
+                    addItem(item, addOnQty[item._id] || {});
+                    toast.success(`${item.name} added to cart`);
+                    setAddOnQty(prev => ({ ...prev, [item._id]: {} }));
+                  }}
                   className={`w-full py-2 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
                     isInCart(item._id)
                       ? 'bg-green-50 text-green-700 border border-green-200'

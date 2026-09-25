@@ -507,7 +507,26 @@ const itemsTable = (order) => {
   <table>
     <thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Subtotal</th></tr></thead>
     <tbody>
-      ${items.map(i => `<tr><td>${i.name}</td><td>${i.quantity}</td><td>${formatCurrency(i.price)}</td><td>${formatCurrency(i.price * i.quantity)}</td></tr>`).join('')}
+      ${items.map(i => {
+        // The kitchen needs the extras spelled out, not just folded into a total.
+        const extras = (i.addOns || []).filter(a => a.quantity > 0);
+        const extrasTotal = extras.reduce((sum, a) => sum + a.price * a.quantity, 0);
+        const extraRows = extras.map(a => `
+          <tr style="color:#5b3bba">
+            <td style="padding-left:24px">+ ${a.label}</td>
+            <td>${a.quantity}</td>
+            <td>${formatCurrency(a.price)}</td>
+            <td>${formatCurrency(a.price * a.quantity)}</td>
+          </tr>`).join('');
+
+        return `
+          <tr>
+            <td><strong>${i.name}</strong></td>
+            <td>${i.quantity}</td>
+            <td>${formatCurrency(i.price)}</td>
+            <td>${formatCurrency(i.price * i.quantity + extrasTotal)}</td>
+          </tr>${extraRows}`;
+      }).join('')}
       <tr><td colspan="3">Subtotal</td><td>${formatCurrency(subtotal)}</td></tr>
       ${discount > 0 ? `<tr style="color:#16a34a"><td colspan="3">Discount${order.coupon?.code ? ` (${order.coupon.code})` : ''}</td><td>-${formatCurrency(discount)}</td></tr>` : ''}
       <tr class="total-row"><td colspan="3">Total</td><td>${formatCurrency(order.totalAmount)}</td></tr>

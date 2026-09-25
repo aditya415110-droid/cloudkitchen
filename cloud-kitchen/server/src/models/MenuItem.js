@@ -36,6 +36,19 @@ const menuItemSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  /**
+   * Paid extras the admin defines per item: cheese, sauces, dips and so on.
+   * Each is individually priced, capped and switchable, so an extra can be
+   * turned off without deleting it and losing its price.
+   */
+  addOns: [{
+    label: { type: String, required: true, trim: true, maxlength: 60 },
+    price: { type: Number, required: true, min: 0 },
+    // Cap per line, so nobody orders 500 by holding the + button.
+    maxQuantity: { type: Number, default: 5, min: 1, max: 20 },
+    enabled: { type: Boolean, default: true },
+  }],
+
   // Denormalised review aggregates, recomputed whenever a review changes.
   averageRating: {
     type: Number,

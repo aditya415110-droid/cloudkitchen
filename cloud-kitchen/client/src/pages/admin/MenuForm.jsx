@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import toast from 'react-hot-toast';
-import { FiUpload, FiX } from 'react-icons/fi';
+import { FiUpload, FiX, FiPlus, FiTrash2 } from 'react-icons/fi';
 
 export default function MenuForm() {
   const { id } = useParams();
@@ -10,6 +10,8 @@ export default function MenuForm() {
   const isEdit = !!id;
 
   const [form, setForm] = useState({ name: '', description: '', category: '', price: '' });
+  // Paid extras: [{ label, price, maxQuantity, enabled }]
+  const [addOns, setAddOns] = useState([]);
   const [existingImages, setExistingImages] = useState([]);
   const [newFiles, setNewFiles] = useState([]);
   const [removeImages, setRemoveImages] = useState([]);
@@ -18,7 +20,18 @@ export default function MenuForm() {
   useEffect(() => {
     if (isEdit) {
       api.getMenuItem(id).then(({ data }) => {
-        setForm({ name: data.name, description: data.description, category: data.category, price: data.price.toString() });
+        setForm({
+          name: data.name,
+          description: data.description,
+          category: data.category,
+          price: data.price.toString(),
+        });
+        setAddOns((data.addOns || []).map(a => ({
+          label: a.label,
+          price: String(a.price),
+          maxQuantity: String(a.maxQuantity ?? 5),
+          enabled: a.enabled !== false,
+        })));
         setExistingImages(data.images || []);
       });
     }
@@ -33,6 +46,17 @@ export default function MenuForm() {
       formData.append('description', form.description);
       formData.append('category', form.category);
       formData.append('price', form.price);
+      // Multipart cannot carry a nested array, so send the extras as JSON.
+      formData.append('addOns', JSON.stringify(
+        addOns
+          .filter(a => a.label.trim())
+          .map(a => ({
+            label: a.label.trim(),
+            price: Number(a.price) || 0,
+            maxQuantity: Number(a.maxQuantity) || 5,
+            enabled: a.enabled,
+          }))
+      ));
       if (removeImages.length > 0) formData.append('removeImages', JSON.stringify(removeImages));
       newFiles.forEach(f => formData.append('images', f));
 
@@ -84,6 +108,91 @@ export default function MenuForm() {
             <label className="block text-sm font-medium mb-1">Price (₹)</label>
             <input className="input" type="number" min="0" step="0.01" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} required />
           </div>
+        </div>
+
+        {/* Paid extras */}
+        <div className="border-t pt-5">
+          <div className="flex items-center justify-between gap-4 mb-1">
+            <label className="block text-sm font-medium">Paid extras</label>
+            <button
+              type="button"
+              onClick={() => setAddOns(prev => [...prev, { label: '', price: '', maxQuantity: '5', enabled: true }])}
+              className="text-sm text-brand-600 hover:text-brand-700 font-medium flex items-center gap-1"
+            >
+              <FiPlus size={14} /> Add extra
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            Cheese, sauces, dips and so on. Each gets its own &minus;&nbsp;1&nbsp;+ control on the
+            menu, and can be switched off without losing its price.
+          </p>
+
+          {addOns.length === 0 ? (
+            <p className="text-sm text-gray-400 border border-dashed rounded-lg px-3 py-4 text-center">
+              No extras on this item yet.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {addOns.map((a, i) => {
+                const patch = (changes) =>
+                  setAddOns(prev => prev.map((x, j) => (j === i ? { ...x, ...changes } : x)));
+
+                return (
+                  <div key={i} className="flex flex-wrap items-end gap-2 border rounded-lg p-3">
+                    <div className="flex-1 min-w-[140px]">
+                      <label className="block text-xs text-gray-500 mb-1">Name</label>
+                      <input
+                        className="input"
+                        maxLength={60}
+                        value={a.label}
+                        onChange={e => patch({ label: e.target.value })}
+                        placeholder="Extra Cheese"
+                      />
+                    </div>
+                    <div className="w-28">
+                      <label className="block text-xs text-gray-500 mb-1">Price (₹)</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={a.price}
+                        onChange={e => patch({ price: e.target.value })}
+                      />
+                    </div>
+                    <div className="w-20">
+                      <label className="block text-xs text-gray-500 mb-1">Max</label>
+                      <input
+                        className="input"
+                        type="number"
+                        min="1"
+                        max="20"
+                        value={a.maxQuantity}
+                        onChange={e => patch({ maxQuantity: e.target.value })}
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm pb-2">
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={a.enabled}
+                        onChange={e => patch({ enabled: e.target.checked })}
+                      />
+                      On
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setAddOns(prev => prev.filter((_, j) => j !== i))}
+                      className="p-2 text-gray-400 hover:text-red-600 pb-2"
+                      aria-label={`Remove ${a.label || 'extra'}`}
+                    >
+                      <FiTrash2 size={16} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Images */}
